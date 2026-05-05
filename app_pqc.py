@@ -6,6 +6,7 @@ import time
 import json
 import re
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -119,6 +120,95 @@ def get_tables(base_url, doc_id):
         st.error(f"Erro ao buscar tabelas: {e}")
         return []
 
+def get_tables_no_cache(base_url, doc_id):
+    """Fetches list of tables for a document without caching."""
+    try:
+        url = f"{base_url}/docs/{doc_id}/tables"
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        return response.json().get('tables', [])
+    except Exception as e:
+        return []
+
+@st.cache_data(ttl=300)
+def get_doc_usage(base_url, doc_id):
+    """Fetches usage statistics for a document. Returns (data, status_code)."""
+    try:
+        url = f"{base_url}/docs/{doc_id}/usage"
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            return response.json(), 200
+        return None, response.status_code
+    except Exception:
+        return None, 500
+
+@st.cache_data(ttl=300)
+def get_org_usage(base_url, org_id):
+    """Fetches usage for all documents in an organization in a single call."""
+    try:
+        url = f"{base_url}/orgs/{org_id}/usage"
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception:
+        return None
+
+@st.cache_data(ttl=300)
+def get_table_row_count(base_url, doc_id, table_id):
+    """Fetches row count for a specific table using SQL API."""
+    try:
+        # Use SQL for efficiency if possible
+        url = f"{base_url}/docs/{doc_id}/sql?q=SELECT COUNT(*) as count FROM {table_id}"
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            records = response.json().get('records', [])
+            if records:
+                return records[0].get('fields', {}).get('count', 0)
+        
+        # Fallback to records endpoint with limit=1 to check if table is empty or not
+        # Note: Grist API doesn't return total count easily in /records unless you fetch all.
+        # But SQL API should work on most documents if we have access.
+        return 0
+    except Exception:
+        return 0
+
+@st.cache_data(ttl=300)
+def get_doc_attachments_info(base_url, doc_id):
+    """Fetches all attachments metadata for a document."""
+    try:
+        url = f"{base_url}/docs/{doc_id}/attachments"
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            data = response.json()
+            # Grist returns {"records": [...]} or sometimes just a list depending on version
+            if isinstance(data, dict) and 'records' in data:
+                return data['records']
+            elif isinstance(data, list):
+                return data
+        return []
+    except Exception:
+        return []
+
+@st.cache_data(ttl=300)
+def get_table_columns_count(base_url, doc_id, table_id):
+    """Returns number of columns in a table."""
+    try:
+        cols = get_columns(base_url, doc_id, table_id)
+        return len(cols)
+    except:
+        return 0
+
+def get_columns_no_cache(base_url, doc_id, table_id):
+    """Fetches columns for a specific table without caching."""
+    try:
+        url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        return response.json().get('columns', [])
+    except Exception as e:
+        return []
+
 @st.cache_data(ttl=300)
 def get_columns(base_url, doc_id, table_id):
     """Fetches columns for a specific table."""
@@ -141,6 +231,19 @@ def add_table_record(base_url, doc_id, table_id, col_id, value):
         response = requests.post(url, headers=HEADERS, json=payload)
         response.raise_for_status()
         return True, "Registro adicionado com sucesso!"
+    except Exception as e:
+        return False, str(e)
+
+def add_records(base_url, doc_id, table_id, records):
+    """Adds multiple records to a table."""
+    try:
+        url = f"{base_url}/docs/{doc_id}/tables/{table_id}/records"
+        # records should be a list of dictionaries: [{"Nome": "João", "Idade": 30}, ...]
+        payload = {"records": [{"fields": r} for r in records]}
+        response = requests.post(url, headers=HEADERS, json=payload)
+        if response.status_code == 200:
+            return True, f"{len(records)} registros adicionados."
+        return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
@@ -169,6 +272,22 @@ def add_columns(base_url, doc_id, table_id, columns_payload):
         response = requests.post(url, headers=HEADERS, json=payload)
         if response.status_code == 200:
             return True, "Colunas adicionadas com sucesso!"
+        return False, f"Erro {response.status_code}: {response.text}"
+    except Exception as e:
+        return False, str(e)
+
+def delete_tables_batch(base_url, doc_id, table_ids):
+    """Deletes multiple tables in a single transaction using the /apply endpoint."""
+    if not table_ids:
+        return True, "Nenhuma tabela para remover."
+    try:
+        url = f"{base_url}/docs/{doc_id}/apply"
+        # Grist structural action: ["RemoveTable", tableId]
+        # The /apply endpoint expects a bare array of actions: [ [action1], [action2] ]
+        payload = [["RemoveTable", t_id] for t_id in table_ids]
+        response = requests.post(url, headers=HEADERS, json=payload)
+        if response.status_code == 200:
+            return True, f"{len(table_ids)} tabelas removidas com sucesso."
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
@@ -298,17 +417,6 @@ selected_org_id = org_map[selected_org_key]
 selected_org_name = selected_org_key # For display purposes
 selected_domain = org_domain_map.get(selected_org_id)
 
-# --- DETECTOR DE MUDANÇA DE ORG ---
-if "last_org_id" not in st.session_state:
-    st.session_state.last_org_id = selected_org_id
-
-if st.session_state.last_org_id != selected_org_id:
-    # Org mudou! Limpa dados da org anterior
-    st.session_state.mapped_data = None
-    st.session_state.last_org_id = selected_org_id
-    st.cache_data.clear() # Limpa cache para forçar recarga da nova org
-    st.toast(f"Trocando para: {selected_org_name}")
-
 # Garante inicialização do mapped_data
 if "mapped_data" not in st.session_state:
     st.session_state.mapped_data = None
@@ -331,9 +439,11 @@ if st.sidebar.button("🔄 Forçar Recarga Geral", key="force_reload_btn"):
     st.rerun()
 
 # Main Content Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["👥 Visão Global (Org)", "🗺️ Mapeamento de Documentos", "⚡ Ações Rápidas", "🛡️ Auditoria de Regras", "❓ Ajuda", "⚖️ Auditoria de Integridade", "🏗️ Clonador de Templates", "🛠️ Blueprint (Novo Doc)"])
+tabs_list = ["👥 Visão Global (Org)", "🗺️ Mapeamento de Documentos", "⚡ Ações Rápidas", "🛡️ Auditoria de Regras", "❓ Ajuda", "⚖️ Auditoria de Integridade", "🏗️ Clonador de Templates", "🛠️ Blueprint (Novo Doc)", "📊 Limites e Uso", "📥 Popular Tabelas"]
 
-# ... (Previous tabs 1-7 remain unchanged) ...
+# Para garantir a persistência em versões que não aceitam 'key' no st.tabs,
+# mantemos o componente, mas evitamos chamadas de rerun que não sejam estritamente necessárias.
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(tabs_list)
 
 # --- TAB 1: Global Organization Users ---
 with tab1:
@@ -1617,8 +1727,61 @@ with tab8:
 
     sel_target_doc_name = st.selectbox("Selecione o Documento Alvo", sorted(doc_opts_bp.keys(), reverse=True), key="blueprint_target_doc")
     
+    col_bp_actions1, col_bp_actions2 = st.columns([1, 1])
+    with col_bp_actions1:
+        overwrite_mode = st.checkbox("🔥 Modo Sobrescrita (Apagar tabelas atuais)", help="Se marcado, todas as tabelas atuais (exceto as de sistema) serão APAGADAS antes de aplicar o novo JSON. USE COM CAUTELA!")
+        if overwrite_mode:
+            st.warning("⚠️ Você ativou a limpeza total. Isso apagará todos os dados das tabelas atuais do documento selecionado.")
+            confirm_overwrite = st.checkbox("✅ Confirmo que desejo APAGAR todas as tabelas do documento selecionado.", key="confirm_ow")
+        else:
+            confirm_overwrite = False
+    
+    if st.button("🔍 Buscar Estrutura Atual (JSON)", key="btn_fetch_blueprint"):
+        if not sel_target_doc_name:
+            st.error("Selecione um documento alvo.")
+        else:
+            with st.spinner("Extraindo estrutura do documento..."):
+                t_id = doc_opts_bp[sel_target_doc_name]
+                tables = get_tables_no_cache(CURRENT_BASE_URL, t_id)
+                blueprint_fetch = {"tables": []}
+                for t in tables:
+                    if t['id'].startswith('_grist'): continue
+                    cols = get_columns_no_cache(CURRENT_BASE_URL, t_id, t['id'])
+                    clean_cols = []
+                    for c in cols:
+                        f = c['fields']
+                        w_opts = f.get("widgetOptions", "{}")
+                        try:
+                            w_dict = json.loads(w_opts) if w_opts else {}
+                        except:
+                            w_dict = {}
+                            
+                        col_entry = {
+                            "id": c['id'],
+                            "label": f.get("label"),
+                            "type": f.get("type"),
+                            "isFormula": f.get("isFormula", False),
+                            "formula": f.get("formula", "")
+                        }
+                        
+                        # Extract choices if they exist
+                        if "choices" in w_dict:
+                            col_entry["options"] = w_dict["choices"]
+                            
+                        clean_cols.append(col_entry)
+                    blueprint_fetch["tables"].append({
+                        "id": t['id'],
+                        "columns": clean_cols
+                    })
+                
+                # Update text area directly via session state
+                fetched_json = json.dumps(blueprint_fetch, indent=2, ensure_ascii=False)
+                st.session_state["bp_json_area"] = fetched_json
+                st.success(f"Estrutura carregada! Encontradas {len(blueprint_fetch['tables'])} tabelas.")
+                # st.rerun()  <-- REMOVIDO PARA EVITAR PULO DE ABA
+
     blueprint_json_raw = st.text_area("Cole o JSON de estrutura:", 
-                                    height=300, 
+                                    height=400, 
                                     key="bp_json_area",
                                     placeholder='''{
   "tables": [
@@ -1653,44 +1816,96 @@ with tab8:
                 progress_bp = st.progress(0.0)
                 logs_bp = []
                 
+                # 0. Fetch existing structure to avoid duplicates
+                existing_tables = get_tables_no_cache(CURRENT_BASE_URL, target_doc_id)
+                existing_table_ids = {t['id'] for t in existing_tables}
+                
                 with st.status("Executando Blueprint em 2 etapas...", expanded=True) as status_container:
                     
+                    # --- OPCIONAL: SOBRESCRITA (APAGAR TUDO) ---
+                    if overwrite_mode:
+                        status_container.write("### 🔥 Etapa 0: Limpando Documento (Sobrescrita)")
+                        tables_to_del = [tid for tid in existing_table_ids if not tid.startswith('_grist')]
+                        
+                        if tables_to_del:
+                            status_container.write(f"🗑️ Removendo {len(tables_to_del)} tabelas em lote...")
+                            ok_del, msg_del = delete_tables_batch(CURRENT_BASE_URL, target_doc_id, tables_to_del)
+                            if ok_del:
+                                logs_bp.append(f"🗑️ {msg_del}")
+                            else:
+                                logs_bp.append(f"⚠️ Erro ao limpar documento: {msg_del}")
+                        
+                        # Refresh existing list after deletion
+                        existing_tables = get_tables_no_cache(CURRENT_BASE_URL, target_doc_id)
+                        existing_table_ids = {t['id'] for t in existing_tables}
+
                     # --- ETAPA 1: CRIAR TABELAS (ESQUELETO SEM REFS) ---
-                    status_container.write("### 🏗️ Etapa 1: Criando Tabelas (Sem Referências)")
+                    status_container.write("### 🏗️ Etapa 1: Criando/Verificando Tabelas")
                     for i, tbl in enumerate(blueprint_data):
                         t_id = tbl.get('id')
                         t_cols_all = tbl.get('columns', [])
                         
-                        # Filtrar apenas colunas que NÃO são Ref
-                        t_cols_skeleton = [
-                            c for c in t_cols_all 
-                            if not str(c.get('type', '')).startswith('Ref:')
-                        ]
-                        
-                        status_container.write(f"⏳ Criando esqueleto da tabela: **{t_id}**...")
-                        
-                        # Adaptar payload se o JSON do usuário não tiver a chave 'fields' (Grist standard vs simplify)
-                        # No JSON do usuário, 'type' e 'label' estão no nível da coluna. O create_table espera formatado.
-                        formatted_skeleton = []
-                        for col in t_cols_skeleton:
-                            formatted_skeleton.append({
-                                "id": col['id'],
-                                "fields": {
+                        # Check if table exists
+                        if t_id in existing_table_ids:
+                            logs_bp.append(f"ℹ️ {t_id}: Tabela já existe. Verificando colunas...")
+                            
+                            # Get existing columns for this table
+                            ex_cols = get_columns_no_cache(CURRENT_BASE_URL, target_doc_id, t_id)
+                            ex_col_ids = {c['id'] for c in ex_cols}
+                            
+                            # Filter only NEW columns
+                            new_cols_to_add = []
+                            for col in t_cols_all:
+                                if col['id'] not in ex_col_ids and not str(col.get('type', '')).startswith('Ref:'):
+                                    new_cols_to_add.append({
+                                        "id": col['id'],
+                                        "fields": {
+                                            "label": col.get('label', col['id']),
+                                            "type": col.get('type', 'Text'),
+                                            "isFormula": col.get('isFormula', False),
+                                            "formula": col.get('formula', '')
+                                        }
+                                    })
+                            
+                            if new_cols_to_add:
+                                status_container.write(f"⏳ Adicionando {len(new_cols_to_add)} colunas novas em **{t_id}**...")
+                                ok_c, msg_c = add_columns(CURRENT_BASE_URL, target_doc_id, t_id, new_cols_to_add)
+                                logs_bp.append(f"   - Colunas novas: {msg_c}")
+                            else:
+                                logs_bp.append(f"   - Nenhuma coluna nova para adicionar.")
+                                
+                        else:
+                            # Table DOES NOT exist, create it
+                            # Filtrar apenas colunas que NÃO são Ref para o esqueleto
+                            t_cols_skeleton = [
+                                c for c in t_cols_all 
+                                if not str(c.get('type', '')).startswith('Ref:')
+                            ]
+                            
+                            status_container.write(f"🆕 Criando nova tabela: **{t_id}**...")
+                            
+                            formatted_skeleton = []
+                            for col in t_cols_skeleton:
+                                f_payload = {
                                     "label": col.get('label', col['id']),
                                     "type": col.get('type', 'Text'),
                                     "isFormula": col.get('isFormula', False),
                                     "formula": col.get('formula', '')
                                 }
-                            })
+                                # Add choices if present
+                                if "options" in col:
+                                    f_payload["widgetOptions"] = json.dumps({"choices": col["options"]})
+                                    
+                                formatted_skeleton.append({
+                                    "id": col['id'],
+                                    "fields": f_payload
+                                })
 
-                        ok_bp, msg_bp = create_table(CURRENT_BASE_URL, target_doc_id, t_id, formatted_skeleton)
-                        
-                        if ok_bp:
-                            logs_bp.append(f"✅ {t_id}: Esqueleto criado.")
-                        elif msg_bp == "EXISTING":
-                            logs_bp.append(f"ℹ️ {t_id}: Já existe.")
-                        else:
-                            logs_bp.append(f"❌ {t_id}: Erro - {msg_bp}")
+                            ok_bp, msg_bp = create_table(CURRENT_BASE_URL, target_doc_id, t_id, formatted_skeleton)
+                            if ok_bp:
+                                logs_bp.append(f"✅ {t_id}: Tabela criada.")
+                            else:
+                                logs_bp.append(f"❌ {t_id}: Erro ao criar - {msg_bp}")
                     
                     progress_bp.progress(0.5)
                     
@@ -1700,9 +1915,13 @@ with tab8:
                         t_id = tbl.get('id')
                         t_cols_all = tbl.get('columns', [])
                         
+                        # Get current columns again to be safe
+                        curr_cols = get_columns_no_cache(CURRENT_BASE_URL, target_doc_id, t_id)
+                        curr_col_ids = {c['id'] for c in curr_cols}
+                        
                         t_cols_refs = [
                             c for c in t_cols_all 
-                            if str(c.get('type', '')).startswith('Ref:')
+                            if str(c.get('type', '')).startswith('Ref:') and c['id'] not in curr_col_ids
                         ]
                         
                         if t_cols_refs:
@@ -1718,20 +1937,18 @@ with tab8:
                                     }
                                 })
                             
-                            status_container.write(f"⏳ Vinculando refs em: **{t_id}**...")
+                            status_container.write(f"🔗 Vinculando refs em: **{t_id}**...")
                             ok_c, msg_c = add_columns(CURRENT_BASE_URL, target_doc_id, t_id, formatted_refs)
                             if ok_c:
-                                logs_bp.append(f"🔗 {t_id}: Referências OK.")
+                                logs_bp.append(f"🔗 {t_id}: Referências novas OK.")
                             else:
                                 logs_bp.append(f"❌ {t_id}: Falha nas Refs - {msg_c}")
-                    
                     progress_bp.progress(1.0)
                     status_container.update(label="Processo Concluído!", state="complete")
                 
                 st.success("Blueprint aplicado!")
                 with st.expander("📄 Ver Log Detalhado"):
                     st.code("\n".join(logs_bp))
-                    
             except Exception as e:
                 st.error(f"💥 Erro na execução: {e}")
                 with st.expander("🛠️ Debug Técnico (Traceback)"):
@@ -1748,6 +1965,221 @@ with tab8:
             except:
                 st.write("Status do JSON: ❌ Erro de Sintaxe")
 
+@st.cache_data(ttl=300)
+def get_real_data_size(base_url, doc_id):
+    """Fetches the actual SQLite file size (no history) using HEAD request on download endpoint."""
+    try:
+        # Use nohistory=true to get only the data size (Grist 10MB limit target)
+        url = f"{base_url}/docs/{doc_id}/download?nohistory=true"
+        # We use a GET with stream=True but don't download the body to get the header
+        with requests.get(url, headers=HEADERS, stream=True) as r:
+            if r.status_code == 200:
+                size = r.headers.get('Content-Length')
+                return int(size) if size else 0
+        return 0
+    except Exception:
+        return 0
+
+# --- TAB 9: Limites e Uso ---
+with tab9:
+    st.header("📊 Limites e Uso (Grist)")
+    st.info("""
+    💡 **Métricas Reais:** 
+    - **Dados (10MB):** Calculado via tamanho real do arquivo SQLite (sem histórico).
+    - **Densidade (Células):** Útil para saber qual tabela específica está 'pesada'.
+    """)
+    
+    # 1. Fetch all documents
+    if st.session_state.mapped_data is not None:
+        all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID', 'Workspace']].drop_duplicates()
+    else:
+        with st.spinner("Buscando lista de documentos..."):
+            workspaces = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+            all_docs = []
+            for ws in workspaces:
+                for doc in ws.get('docs', []):
+                    all_docs.append({'Documento': doc['name'], 'Doc ID': doc['id'], 'Workspace': ws.get('name')})
+            all_docs_list = pd.DataFrame(all_docs)
+
+    if all_docs_list.empty:
+        st.warning("Nenhum documento encontrado.")
+    else:
+        st.subheader("📋 Visão Geral de Limites (Todos os Documentos)")
+        
+        c_btn1, c_btn2 = st.columns(2)
+        
+        # Method A: Org API (Fast but might fail)
+        if c_btn1.button("🚀 Relatório Consolidado (Rápido)", key="load_global_usage_btn", use_container_width=True):
+            with st.spinner("Solicitando relatório da organização..."):
+                org_usage_data = get_org_usage(CURRENT_BASE_URL, selected_org_id)
+                if org_usage_data and 'docs' in org_usage_data:
+                    usage_map = {d['id']: d for d in org_usage_data['docs']}
+                    usage_results = []
+                    for _, row in all_docs_list.iterrows():
+                        u = usage_map.get(row['Doc ID'])
+                        if u:
+                            rows_t = u.get('rowCount', {}).get('total', 0)
+                            rows_l = u.get('rowCount', {}).get('limit', 5000)
+                            data_t = u.get('dataSize', {}).get('total', 0)
+                            data_l = u.get('dataSize', {}).get('limit', 10*1024*1024)
+                            att_t = u.get('attachmentsSize', {}).get('total', 0)
+                            att_l = u.get('attachmentsSize', {}).get('limit', 1024*1024*1024)
+                            usage_results.append({
+                                'Documento': row['Documento'], 'Workspace': row['Workspace'],
+                                'Linhas (%)': round((rows_t / rows_l * 100), 1) if rows_l > 0 else 0,
+                                'Dados (%)': round((data_t / data_l * 100), 1) if data_l > 0 else 0,
+                                'Anexos (%)': round((att_t / att_l * 100), 1) if att_l > 0 else 0,
+                                'Total Linhas': rows_t, 'Aviso': '✅ OK'
+                            })
+                        else:
+                            usage_results.append({'Documento': row['Documento'], 'Workspace': row['Workspace'], 'Linhas (%)': 0, 'Dados (%)': 0, 'Anexos (%)': 0, 'Total Linhas': 0, 'Aviso': '⚠️ Não listado'})
+                    st.session_state.global_usage_df = pd.DataFrame(usage_results)
+                else:
+                    st.error("❌ Relatório consolidado indisponível para esta conta. Use o Modo Profundo.")
+
+        # Method B: Parallel Iterative Scan (Slower but reliable)
+        if c_btn2.button("🔍 Modo Profundo (Paralelo)", key="load_deep_usage_btn", use_container_width=True):
+            usage_results = []
+            status_placeholder = st.empty()
+            progress_bar = st.progress(0)
+            
+            def scan_single_doc(doc_row):
+                d_id = doc_row['Doc ID']
+                # 1. Get real file size (Data)
+                real_size = get_real_data_size(CURRENT_BASE_URL, d_id)
+                
+                # 2. Try usage API for rows
+                usage, status = get_doc_usage(CURRENT_BASE_URL, d_id)
+                
+                rows_t = 0
+                if usage:
+                    rows_t = usage.get('rowCount', {}).get('total', 0)
+                    att_pct = round((usage.get('attachmentsSize', {}).get('total', 0) / usage.get('attachmentsSize', {}).get('limit', 1024*1024*1024) * 100), 1)
+                else:
+                    # Fallback row count
+                    try:
+                        tables = get_tables(CURRENT_BASE_URL, d_id)
+                        for t in tables:
+                            if not t['id'].startswith('_grist'):
+                                rows_t += get_table_row_count(CURRENT_BASE_URL, d_id, t['id'])
+                    except: pass
+                    att_pct = 0.0
+
+                return {
+                    'Documento': doc_row['Documento'], 'Workspace': doc_row['Workspace'],
+                    'Linhas (%)': round((rows_t / 5000 * 100), 1),
+                    'Dados (%)': round((real_size / (10 * 1024 * 1024) * 100), 1),
+                    'Anexos (%)': att_pct,
+                    'Total Linhas': rows_t, 'Aviso': '✅ OK (Scan Direto)'
+                }
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(scan_single_doc, row) for _, row in all_docs_list.iterrows()]
+                for i, future in enumerate(futures):
+                    usage_results.append(future.result())
+                    progress_bar.progress((i + 1) / len(futures))
+                    status_placeholder.text(f"Processando {i+1}/{len(futures)} documentos...")
+            
+            st.session_state.global_usage_df = pd.DataFrame(usage_results)
+            status_placeholder.empty()
+            progress_bar.empty()
+
+        if 'global_usage_df' in st.session_state:
+            st.dataframe(
+                st.session_state.global_usage_df.sort_values(by='Linhas (%)', ascending=False),
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "Linhas (%)": st.column_config.ProgressColumn("Linhas (%)", format="%.1f%%", min_value=0, max_value=100),
+                    "Dados (%)": st.column_config.ProgressColumn("Dados (%)", format="%.1f%%", min_value=0, max_value=100),
+                    "Anexos (%)": st.column_config.ProgressColumn("Anexos (%)", format="%.1f%%", min_value=0, max_value=100),
+                }
+            )
+
+# --- TAB 10: Popular Tabelas ---
+with tab10:
+    st.header("📥 Popular Tabelas com IA")
+    st.markdown("Gere templates para que um LLM (Gemini, ChatGPT) crie dados fictícios para suas tabelas.")
+
+    if st.session_state.mapped_data is not None:
+        all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
+        doc_opts_pop = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
+    else:
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+        doc_opts_pop = {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
+    
+    sel_doc_pop_name = st.selectbox("1. Selecione o Documento", sorted(doc_opts_pop.keys()), index=None, key="pop_doc_sel")
+    
+    if sel_doc_pop_name:
+        doc_id_pop = doc_opts_pop[sel_doc_pop_name]
+        tables_pop = get_tables(CURRENT_BASE_URL, doc_id_pop)
+        table_ids_pop = sorted([t['id'] for t in tables_pop if not t['id'].startswith('_grist')])
+        
+        sel_tables_pop = st.multiselect("2. Selecione as Tabelas para popular", table_ids_pop, key="pop_tables_sel")
+        
+        if sel_tables_pop:
+            if st.button("🪄 Gerar Template para LLM"):
+                template = []
+                for t_id in sel_tables_pop:
+                    cols = get_columns(CURRENT_BASE_URL, doc_id_pop, t_id)
+                    col_info = {c['id']: c['fields'].get('type', 'Text') for c in cols if not c['fields'].get('isFormula')}
+                    
+                    table_template = {
+                        "__METADATA__": {
+                            "instrucao": f"Gere dados fictícios realistas para a tabela '{t_id}'.",
+                            "tabela": t_id,
+                            "colunas_e_tipos": col_info
+                        },
+                        "table_id": t_id,
+                        "records": [
+                            {cid: "..." for cid in col_info.keys()}
+                        ]
+                    }
+                    template.append(table_template)
+                
+                st.session_state.pop_template_json = json.dumps(template, indent=2, ensure_ascii=False)
+            
+            if "pop_template_json" in st.session_state:
+                st.markdown("### 📝 Template Gerado")
+                st.caption("Copie o JSON abaixo e peça ao LLM para preencher a lista 'records'.")
+                st.text_area("Template para o LLM", value=st.session_state.pop_template_json, height=300, key="pop_template_area")
+                
+                st.divider()
+                st.markdown("### 📥 Importar Dados da IA")
+                pop_input_json = st.text_area("Cole aqui o JSON preenchido pela IA:", height=300, key="pop_input_area")
+                
+                if st.button("🚀 Executar Povoamento", type="primary"):
+                    if not pop_input_json.strip():
+                        st.error("JSON de entrada vazio.")
+                    else:
+                        try:
+                            import_data = json.loads(pop_input_json)
+                            if not isinstance(import_data, list):
+                                import_data = [import_data]
+                            
+                            with st.status("Processando inserção de dados...", expanded=True) as status_pop:
+                                for item in import_data:
+                                    t_id = item.get("table_id")
+                                    records = item.get("records", [])
+                                    
+                                    if t_id and records:
+                                        # Filtrar metadados se o LLM os manteve nos records (improvável mas por segurança)
+                                        clean_records = []
+                                        for r in records:
+                                            clean_r = {k: v for k, v in r.items() if not k.startswith("__")}
+                                            clean_records.append(clean_r)
+                                        
+                                        status_pop.write(f"📥 Inserindo {len(clean_records)} registros em **{t_id}**...")
+                                        ok, msg = add_records(CURRENT_BASE_URL, doc_id_pop, t_id, clean_records)
+                                        if ok:
+                                            status_pop.write(f"✅ {t_id}: {msg}")
+                                        else:
+                                            status_pop.write(f"❌ {t_id}: {msg}")
+                                status_pop.update(label="Povoamento Concluído!", state="complete")
+                                st.balloons()
+                        except Exception as e:
+                            st.error(f"Erro ao processar JSON: {e}")
+    else:
+        st.info("Selecione um documento para começar.")
 
 
         
