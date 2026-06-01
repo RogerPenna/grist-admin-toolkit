@@ -19,18 +19,44 @@ st.set_page_config(
 
 # 1. Configuration & Setup
 load_dotenv()
-API_KEY = os.getenv("GRIST_API_KEY")
-GENERIC_BASE_URL = "https://docs.getgrist.com/api"
 
-if not API_KEY:
-    st.error("❌ GRIST_API_KEY não encontrada no arquivo .env")
-    st.stop()
+# Persistence for custom servers
+SAVED_SERVERS_FILE = "saved_servers.json"
 
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json",
-    "X-Requested-With": "XMLHttpRequest"
-}
+def load_saved_servers():
+    """Loads a dict of {url: api_key}."""
+    if os.path.exists(SAVED_SERVERS_FILE):
+        try:
+            with open(SAVED_SERVERS_FILE, "r") as f:
+                data = json.load(f)
+                if isinstance(data, list): # Migration from old format
+                    return {url: "" for url in data}
+                return data
+        except:
+            return {}
+    return {}
+
+def save_server(url, api_key=""):
+    if not url or url == "https://docs.getgrist.com/api":
+        return
+    servers = load_saved_servers()
+    servers[url] = api_key
+    with open(SAVED_SERVERS_FILE, "w") as f:
+        json.dump(servers, f, indent=2)
+
+def delete_server(url):
+    servers = load_saved_servers()
+    if url in servers:
+        del servers[url]
+        with open(SAVED_SERVERS_FILE, "w") as f:
+            json.dump(servers, f, indent=2)
+
+def get_auth_headers(api_key):
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+    }
 
 # Helper: Email Normalization
 def normalize_email(email_str):
@@ -49,10 +75,11 @@ def normalize_email(email_str):
 # 2. API Helper Functions with Caching
 
 @st.cache_data(ttl=300)
-def get_orgs():
+def get_orgs(base_url, api_key):
     """Fetches available organizations."""
+    base_url = base_url.strip().rstrip("/")
     try:
-        response = requests.get(f"{GENERIC_BASE_URL}/orgs", headers=HEADERS)
+        response = requests.get(f"{base_url}/orgs", headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -60,11 +87,12 @@ def get_orgs():
         return []
 
 @st.cache_data(ttl=300)
-def get_org_users(base_url, org_id):
+def get_org_users(base_url, api_key, org_id):
     """Fetches users at the organization level."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/orgs/{org_id}/access"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         data = response.json()
         return data.get("users", [])
@@ -73,11 +101,12 @@ def get_org_users(base_url, org_id):
         return []
 
 @st.cache_data(ttl=300)
-def get_workspaces_and_docs(base_url, org_id):
+def get_workspaces_and_docs(base_url, api_key, org_id):
     """Fetches all workspaces and their documents for an org."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/orgs/{org_id}/workspaces"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -85,23 +114,25 @@ def get_workspaces_and_docs(base_url, org_id):
         return []
 
 @st.cache_data(ttl=600)
-def get_doc_users(base_url, doc_id):
+def get_doc_users(base_url, api_key, doc_id):
     """Fetches users assigned to a specific document."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/access"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         data = response.json()
         return data.get("users", [])
     except Exception as e:
         return []
 
-def update_doc_access(base_url, doc_id, email, role):
+def update_doc_access(base_url, api_key, doc_id, email, role):
     """Updates user access via PATCH /access with delta."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id.strip()}/access"
         payload = {"delta": {"users": {email.strip(): role}}}
-        response = requests.patch(url, headers=HEADERS, json=payload)
+        response = requests.patch(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code != 200:
              return False, f"Erro {response.status_code}: {response.text}"
         return True, "Sucesso!"
@@ -109,33 +140,36 @@ def update_doc_access(base_url, doc_id, email, role):
         return False, str(e)
 
 @st.cache_data(ttl=300)
-def get_tables(base_url, doc_id):
+def get_tables(base_url, api_key, doc_id):
     """Fetches list of tables for a document."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json().get('tables', [])
     except Exception as e:
         st.error(f"Erro ao buscar tabelas: {e}")
         return []
 
-def get_tables_no_cache(base_url, doc_id):
+def get_tables_no_cache(base_url, api_key, doc_id):
     """Fetches list of tables for a document without caching."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json().get('tables', [])
     except Exception as e:
         return []
 
 @st.cache_data(ttl=300)
-def get_doc_usage(base_url, doc_id):
+def get_doc_usage(base_url, api_key, doc_id):
     """Fetches usage statistics for a document. Returns (data, status_code)."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/usage"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 200:
             return response.json(), 200
         return None, response.status_code
@@ -143,11 +177,12 @@ def get_doc_usage(base_url, doc_id):
         return None, 500
 
 @st.cache_data(ttl=300)
-def get_org_usage(base_url, org_id):
+def get_org_usage(base_url, api_key, org_id):
     """Fetches usage for all documents in an organization in a single call."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/orgs/{org_id}/usage"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 200:
             return response.json()
         return None
@@ -155,12 +190,13 @@ def get_org_usage(base_url, org_id):
         return None
 
 @st.cache_data(ttl=300)
-def get_table_row_count(base_url, doc_id, table_id):
+def get_table_row_count(base_url, api_key, doc_id, table_id):
     """Fetches row count for a specific table using SQL API."""
+    base_url = base_url.strip().rstrip("/")
     try:
         # Use SQL for efficiency if possible
         url = f"{base_url}/docs/{doc_id}/sql?q=SELECT COUNT(*) as count FROM {table_id}"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 200:
             records = response.json().get('records', [])
             if records:
@@ -174,11 +210,12 @@ def get_table_row_count(base_url, doc_id, table_id):
         return 0
 
 @st.cache_data(ttl=300)
-def get_doc_attachments_info(base_url, doc_id):
+def get_doc_attachments_info(base_url, api_key, doc_id):
     """Fetches all attachments metadata for a document."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/attachments"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 200:
             data = response.json()
             # Grist returns {"records": [...]} or sometimes just a list depending on version
@@ -191,69 +228,74 @@ def get_doc_attachments_info(base_url, doc_id):
         return []
 
 @st.cache_data(ttl=300)
-def get_table_columns_count(base_url, doc_id, table_id):
+def get_table_columns_count(base_url, api_key, doc_id, table_id):
     """Returns number of columns in a table."""
     try:
-        cols = get_columns(base_url, doc_id, table_id)
+        cols = get_columns(base_url, api_key, doc_id, table_id)
         return len(cols)
     except:
         return 0
 
-def get_columns_no_cache(base_url, doc_id, table_id):
+def get_columns_no_cache(base_url, api_key, doc_id, table_id):
     """Fetches columns for a specific table without caching."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json().get('columns', [])
     except Exception as e:
         return []
 
 @st.cache_data(ttl=300)
-def get_columns(base_url, doc_id, table_id):
+def get_columns(base_url, api_key, doc_id, table_id):
     """Fetches columns for a specific table."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         response.raise_for_status()
         return response.json().get('columns', [])
     except Exception as e:
         st.error(f"Erro ao buscar colunas: {e}")
         return []
 
-def add_table_record(base_url, doc_id, table_id, col_id, value):
+def add_table_record(base_url, api_key, doc_id, table_id, col_id, value):
     """Adds a new record to a table with a specific value in one column."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/records"
         payload = {
             "records": [{"fields": {col_id: value}}]
         }
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         response.raise_for_status()
         return True, "Registro adicionado com sucesso!"
     except Exception as e:
         return False, str(e)
 
-def add_records(base_url, doc_id, table_id, records):
+def add_records(base_url, api_key, doc_id, table_id, records):
     """Adds multiple records to a table."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/records"
         # records should be a list of dictionaries: [{"Nome": "João", "Idade": 30}, ...]
         payload = {"records": [{"fields": r} for r in records]}
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, f"{len(records)} registros adicionados."
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
-def create_table(base_url, doc_id, table_id, columns_payload):
+def create_table(base_url, api_key, doc_id, table_id, columns_payload):
     """Creates a new table in the document with the provided columns."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables"
         # Grist requires columns to be present when creating a table
         payload = {"tables": [{"id": table_id, "columns": columns_payload}]}
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, "Tabela e colunas criadas com sucesso!"
         # If table already exists, return a specific status
@@ -263,41 +305,44 @@ def create_table(base_url, doc_id, table_id, columns_payload):
     except Exception as e:
         return False, str(e)
 
-def add_columns(base_url, doc_id, table_id, columns_payload):
+def add_columns(base_url, api_key, doc_id, table_id, columns_payload):
     """Adds columns to an existing table."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
         # columns_payload should be a list of {id, fields: {label, type, formula, isFormula, ...}}
         payload = {"columns": columns_payload}
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, "Colunas adicionadas com sucesso!"
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
-def delete_tables_batch(base_url, doc_id, table_ids):
+def delete_tables_batch(base_url, api_key, doc_id, table_ids):
     """Deletes multiple tables in a single transaction using the /apply endpoint."""
     if not table_ids:
         return True, "Nenhuma tabela para remover."
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/apply"
         # Grist structural action: ["RemoveTable", tableId]
         # The /apply endpoint expects a bare array of actions: [ [action1], [action2] ]
         payload = [["RemoveTable", t_id] for t_id in table_ids]
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, f"{len(table_ids)} tabelas removidas com sucesso."
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
-def create_document(base_url, workspace_id, doc_name):
+def create_document(base_url, api_key, workspace_id, doc_name):
     """Creates a new Grist document in a specific workspace."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/workspaces/{workspace_id}/docs"
         payload = {"name": doc_name}
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, response.json() # Returns the new doc ID string
         return False, f"Erro {response.status_code}: {response.text}"
@@ -323,11 +368,12 @@ def save_audit_config(name, config_data):
 
 # --- ACL HELPER FUNCTIONS ---
 
-def fetch_table_records(base_url, doc_id, table_name):
+def fetch_table_records(base_url, api_key, doc_id, table_name):
     """Fetches all records from a table."""
+    base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_name}/records"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 404:
             return [] # Table usually doesn't exist if no rules
         if response.status_code == 403:
@@ -339,11 +385,11 @@ def fetch_table_records(base_url, doc_id, table_name):
     except Exception:
         return []
 
-def get_denormalized_rules(base_url, doc_id):
+def get_denormalized_rules(base_url, api_key, doc_id):
     """Fetches _grist_ACLRules and _grist_ACLResources and merges them."""
     try:
-        rules_records = fetch_table_records(base_url, doc_id, '_grist_ACLRules')
-        resources_records = fetch_table_records(base_url, doc_id, '_grist_ACLResources')
+        rules_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
+        resources_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
     except PermissionError as e:
         st.error(f"🚫 {e}")
         return []
@@ -386,14 +432,100 @@ def get_denormalized_rules(base_url, doc_id):
 
 # 3. Main UI Layout
 
-st.title("🏆 Gestor de Acessos PQC-RS (Grist)")
+st.markdown("<h2 style='margin-top: -60px;'>🛠️ Grist Admin & Data Toolkit</h2>", unsafe_allow_html=True)
+
+# --- Sidebar: Connection Configuration ---
+st.sidebar.header("🔌 Conexão")
+
+saved_servers = load_saved_servers()
+server_options = ["Grist Cloud (SaaS)"] + list(saved_servers.keys()) + ["+ Adicionar Novo Servidor..."]
+
+# Initialize session state from .env if available
+if "auth_api_key" not in st.session_state:
+    st.session_state.auth_api_key = os.getenv("GRIST_API_KEY", "")
+if "auth_base_url" not in st.session_state:
+    st.session_state.auth_base_url = "https://docs.getgrist.com/api"
+
+# Helper for formatted labels in dropdown
+def get_server_label(url):
+    if url == "Grist Cloud (SaaS)": return url
+    if url == "+ Adicionar Novo Servidor...": return url
+    # Show the tail of long URLs if they are too large
+    return url if len(url) < 40 else f"...{url[-37:]}"
+
+selected_server = st.sidebar.selectbox(
+    "Servidor",
+    server_options,
+    index=0 if st.session_state.auth_base_url == "https://docs.getgrist.com/api" else (server_options.index(st.session_state.auth_base_url) if st.session_state.auth_base_url in server_options else 0),
+    format_func=get_server_label,
+    help="Selecione ou gerencie seus servidores Grist."
+)
+
+# Manage Servers Expander
+with st.sidebar.expander("🛠️ Gerenciar Servidores Salvos"):
+    if not saved_servers:
+        st.caption("Nenhum servidor customizado salvo.")
+    else:
+        for url, key in list(saved_servers.items()):
+            col_url, col_del = st.columns([4, 1])
+            col_url.text(get_server_label(url))
+            if col_del.button("🗑️", key=f"del_{url}", help=f"Remover {url}"):
+                delete_server(url)
+                st.rerun()
+            
+            # Show and allow editing of the saved key for this specific URL
+            new_saved_key = st.text_input(f"Chave para {get_server_label(url)}", value=key, type="password", key=f"edit_key_{url}")
+            if new_saved_key != key:
+                save_server(url, new_saved_key)
+                st.toast(f"Chave atualizada para {get_server_label(url)}")
+
+custom_url = ""
+if selected_server == "+ Adicionar Novo Servidor...":
+    custom_url = st.sidebar.text_input("Nova URL Base", placeholder="http://192.168.0.95:8484/api")
+    # If user types a URL that we already have, maybe suggest it?
+elif selected_server == "Grist Cloud (SaaS)":
+    st.session_state.auth_base_url = "https://docs.getgrist.com/api"
+else:
+    # Switched to a saved server: load its key!
+    st.session_state.auth_base_url = selected_server
+    if saved_servers.get(selected_server):
+        st.session_state.auth_api_key = saved_servers[selected_server]
+
+api_key_input = st.sidebar.text_input("Grist API Key", value=st.session_state.auth_api_key, type="password", help="Chave de acesso (Bearer Token).")
+
+save_creds = st.sidebar.checkbox("Salvar chave para este servidor", value=True, help="Se marcado, a chave será salva localmente no arquivo de servidores.")
+
+if st.sidebar.button("Conectar / Atualizar"):
+    target_url = st.session_state.auth_base_url
+    if selected_server == "+ Adicionar Novo Servidor..." and custom_url:
+        target_url = custom_url.strip().rstrip("/")
+        st.session_state.auth_base_url = target_url
+    
+    st.session_state.auth_api_key = api_key_input
+    
+    if save_creds and target_url != "https://docs.getgrist.com/api":
+        save_server(target_url, api_key_input)
+    
+    st.cache_data.clear()
+    st.session_state.mapped_data = None
+    st.success("Configurações aplicadas!")
+    st.rerun()
+
+if not st.session_state.auth_api_key:
+    st.warning("🔑 Insira a API Key na barra lateral para acessar os dados.")
+    st.stop()
+
+# Source of truth for API calls
+AUTH_API_KEY = st.session_state.auth_api_key
+AUTH_BASE_URL = st.session_state.auth_base_url
 
 # --- Sidebar: Org Selection ---
-st.sidebar.header("Configuração")
-orgs = get_orgs()
+st.sidebar.divider()
+st.sidebar.header("Organização")
+orgs = get_orgs(AUTH_BASE_URL, AUTH_API_KEY)
 
 if not orgs:
-    st.warning("Nenhuma organização encontrada.")
+    st.warning("Nenhuma organização encontrada com esta chave/servidor.")
     st.stop()
 
 org_map = {f"{org['name']} ({org['id']})": org['id'] for org in orgs}
@@ -421,17 +553,19 @@ selected_domain = org_domain_map.get(selected_org_id)
 if "mapped_data" not in st.session_state:
     st.session_state.mapped_data = None
 
-# Definição da URL Base Dinâmica
-# Personal orgs often return a shard domain (e.g. docs-26) which might not have the API endpoint active or requires auth tweaks.
-# It is safer to use the generic docs.getgrist.com for Personal.
+# Definição da URL Base Dinâmica para Documentos
 is_personal = "personal" in selected_org_name.lower()
 
-if selected_domain and not is_personal:
+# Só usamos sub-domínio dinâmico se estivermos no Grist Cloud (SaaS)
+# Para servidores locais/customizados, mantemos a URL fornecida pelo usuário.
+is_grist_cloud = "getgrist.com" in AUTH_BASE_URL
+
+if selected_domain and not is_personal and is_grist_cloud:
     CURRENT_BASE_URL = f"https://{selected_domain}.getgrist.com/api"
 else:
-    CURRENT_BASE_URL = GENERIC_BASE_URL
+    CURRENT_BASE_URL = AUTH_BASE_URL
 
-st.sidebar.caption(f"📍 Base URL: {CURRENT_BASE_URL}")
+st.sidebar.caption(f"📍 Base URL Atual: {CURRENT_BASE_URL}")
 
 if st.sidebar.button("🔄 Forçar Recarga Geral", key="force_reload_btn"):
     st.cache_data.clear()
@@ -439,11 +573,21 @@ if st.sidebar.button("🔄 Forçar Recarga Geral", key="force_reload_btn"):
     st.rerun()
 
 # Main Content Tabs
-tabs_list = ["👥 Visão Global (Org)", "🗺️ Mapeamento de Documentos", "⚡ Ações Rápidas", "🛡️ Auditoria de Regras", "❓ Ajuda", "⚖️ Auditoria de Integridade", "🏗️ Clonador de Templates", "🛠️ Blueprint (Novo Doc)", "📊 Limites e Uso", "📥 Popular Tabelas"]
+tab_access, tab_data, tab_system = st.tabs(["🔐 Gestão de Acessos", "🏗️ Engenharia de Dados", "⚙️ Sistema"])
 
-# Para garantir a persistência em versões que não aceitam 'key' no st.tabs,
-# mantemos o componente, mas evitamos chamadas de rerun que não sejam estritamente necessárias.
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(tabs_list)
+with tab_access:
+    sub_a1, sub_a2, sub_a3, sub_a4 = st.tabs(["👥 Visão Global", "🗺️ Mapeamento", "⚡ Ações Rápidas", "🛡️ Regras (ACL)"])
+
+with tab_data:
+    sub_d1, sub_d2, sub_d3, sub_d4, sub_d5 = st.tabs(["🏗️ Clonador (Estrutura)", "🚚 Transportador (Dados)", "⚖️ Auditoria de Integridade", "🛠️ Blueprint (Docs)", "📥 IA Populadora"])
+
+with tab_system:
+    sub_s1, sub_s2 = st.tabs(["📊 Limites", "❓ Ajuda"])
+
+# Map old references to new nested sub-tabs
+tab1, tab2, tab3, tab4 = sub_a1, sub_a2, sub_a3, sub_a4
+tab7, tab6, tab8, tab10 = sub_d1, sub_d3, sub_d4, sub_d5
+tab9, tab5 = sub_s1, sub_s2
 
 # --- TAB 1: Global Organization Users ---
 with tab1:
@@ -455,16 +599,19 @@ with tab1:
     with col_g2:
         f_email = st.text_input("Filtrar por Email", key="search_g_email")
 
-    users = get_org_users(CURRENT_BASE_URL, selected_org_id)
+    users = get_org_users(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
     
     if users:
         df_users = pd.DataFrame(users)
         df_display = df_users.rename(columns={'email': 'Email', 'name': 'Nome', 'access': 'Acesso Global'})
-        df_display = df_display[['Email', 'Nome', 'Acesso Global']]
         
-        if f_name:
+        # Defensive column selection
+        disp_cols = [c for c in ['Email', 'Nome', 'Acesso Global'] if c in df_display.columns]
+        df_display = df_display[disp_cols]
+        
+        if f_name and 'Nome' in df_display.columns:
             df_display = df_display[df_display['Nome'].str.contains(f_name, case=False, na=False, regex=False)]
-        if f_email:
+        if f_email and 'Email' in df_display.columns:
             df_display = df_display[df_display['Email'].str.contains(f_email, case=False, na=False, regex=False)]
             
         st.dataframe(df_display, use_container_width=True, hide_index=True)
@@ -475,20 +622,25 @@ with tab1:
         
         if st.session_state.mapped_data is not None:
             # Use filtered emails from the main table
-            valid_emails = sorted([e for e in df_display['Email'].unique() if e and e != '-'])
+            valid_emails = []
+            if 'Email' in df_display.columns:
+                valid_emails = sorted([e for e in df_display['Email'].unique() if e and e != '-'])
             
             selected_user_detail = st.selectbox("Selecione um Usuário (da lista acima) para ver seus Documentos:", valid_emails, key="sel_user_detail")
             
-            if selected_user_detail:
+            if selected_user_detail and 'Email' in st.session_state.mapped_data.columns:
                 # Filter mapped data
                 user_docs = st.session_state.mapped_data[st.session_state.mapped_data['Email'] == selected_user_detail]
                 # Hide inherited access (requested by user)
-                user_docs = user_docs[~user_docs['Nível de Acesso'].str.contains("Herdado", case=False, na=False)]
+                if 'Nível de Acesso' in user_docs.columns:
+                    user_docs = user_docs[~user_docs['Nível de Acesso'].str.contains("Herdado", case=False, na=False)]
                 
                 if not user_docs.empty:
                     st.write(f"📂 **Documentos com acesso explícito para: {selected_user_detail}**")
+                    # Defensive column selection
+                    display_cols = [c for c in ['Documento', 'Workspace', 'Nível de Acesso'] if c in user_docs.columns]
                     st.dataframe(
-                        user_docs[['Documento', 'Workspace', 'Nível de Acesso']], 
+                        user_docs[display_cols], 
                         use_container_width=True, 
                         hide_index=True
                     )
@@ -521,10 +673,15 @@ with tab1:
                 # Documents?
                 docs_found = []
                 if st.session_state.mapped_data is not None:
-                    user_docs = st.session_state.mapped_data[st.session_state.mapped_data['Email'].str.lower() == sem]
-                    # Filter out inherited
-                    user_docs = user_docs[~user_docs['Nível de Acesso'].str.contains("Herdado", case=False, na=False)]
-                    docs_found = user_docs['Documento'].unique().tolist()
+                    m_data = st.session_state.mapped_data
+                    if 'Email' in m_data.columns:
+                        user_docs = m_data[m_data['Email'].str.lower() == sem]
+                        # Filter out inherited
+                        if 'Nível de Acesso' in user_docs.columns:
+                            user_docs = user_docs[~user_docs['Nível de Acesso'].str.contains("Herdado", case=False, na=False)]
+                        
+                        if 'Documento' in user_docs.columns:
+                            docs_found = user_docs['Documento'].unique().tolist()
                 
                 check_data.append({
                     "Selecionar": False,
@@ -561,7 +718,9 @@ with tab1:
                 
                 # Choose target document
                 if st.session_state.mapped_data is not None:
-                    all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
+                    m_data = st.session_state.mapped_data
+                    available_cols = [c for c in ['Documento', 'Doc ID'] if c in m_data.columns]
+                    all_docs_list = m_data[available_cols].drop_duplicates()
                     doc_opts_mass = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
                     
                     c_m1, c_m2, c_m3 = st.columns([2, 1, 1])
@@ -578,7 +737,7 @@ with tab1:
                             with st.status(f"Adicionando ao documento '{target_m}'...", expanded=True) as status:
                                 for _, row in sel_to_add.iterrows():
                                     target_em = row["Email Sanitizado"]
-                                    s, m = update_doc_access(CURRENT_BASE_URL, tid_m, target_em, lvl_m)
+                                    s, m = update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid_m, target_em, lvl_m)
                                     if s:
                                         success_m += 1
                                         st.write(f"✅ {target_em}: OK")
@@ -610,7 +769,13 @@ with tab2:
                     cache_obj = json.load(f)
                     # Check if org matches
                     if cache_obj.get("org_id") == selected_org_id:
-                        st.session_state.mapped_data = pd.DataFrame(cache_obj["data"])
+                        df_cached = pd.DataFrame(cache_obj["data"])
+                        # Defensive: Ensure all columns exist
+                        cols = ['Selecionar', 'Documento', 'Email', 'Nome', 'Nível de Acesso', 'Workspace', 'Doc ID']
+                        for c in cols:
+                            if c not in df_cached.columns:
+                                df_cached[c] = "-"
+                        st.session_state.mapped_data = df_cached
                         st.session_state.mapping_ts = cache_obj.get("timestamp", "")
             except Exception:
                 pass # Ignore load errors
@@ -623,7 +788,7 @@ with tab2:
 
     if st.button("🚀 Iniciar/Atualizar Mapeamento", key="start_map_btn"):
         with st.status("Varrendo documentos...", expanded=True) as status:
-            workspaces = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+            workspaces = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
             all_docs = []
             for ws in workspaces:
                 for doc in ws.get('docs', []):
@@ -632,7 +797,7 @@ with tab2:
             consolidated = []
             progress = st.progress(0)
             for i, doc in enumerate(all_docs):
-                doc_users = get_doc_users(CURRENT_BASE_URL, doc['id'])
+                doc_users = get_doc_users(CURRENT_BASE_URL, AUTH_API_KEY, doc['id'])
                 d_name = doc['name'].strip()
                 if doc_users:
                     for u in doc_users:
@@ -653,7 +818,17 @@ with tab2:
                     })
                 progress.progress((i + 1) / len(all_docs))
             
-            df_map = pd.DataFrame(consolidated)
+            # Always initialize with the full set of columns to prevent KeyErrors elsewhere
+            cols = ['Selecionar', 'Documento', 'Email', 'Nome', 'Nível de Acesso', 'Workspace', 'Doc ID']
+            if not consolidated:
+                df_map = pd.DataFrame(columns=cols)
+            else:
+                df_map = pd.DataFrame(consolidated)
+                # Ensure all required columns exist even if data is partial
+                for c in cols:
+                    if c not in df_map.columns:
+                        df_map[c] = "-"
+            
             st.session_state.mapped_data = df_map
             
             # SAVE TO CACHE
@@ -681,12 +856,12 @@ with tab2:
         f_ac = c4.text_input("Acesso", key="f_ac")
 
         df_f = df.copy()
-        if hide_inh:
+        if hide_inh and 'Nível de Acesso' in df_f.columns:
             df_f = df_f[~df_f['Nível de Acesso'].str.contains("Herdado|Indefinido", case=False, na=False)]
-        if f_doc: df_f = df_f[df_f['Documento'].str.contains(f_doc, case=False, na=False, regex=False)]
-        if f_em: df_f = df_f[df_f['Email'].str.contains(f_em, case=False, na=False, regex=False)]
-        if f_nm: df_f = df_f[df_f['Nome'].str.contains(f_nm, case=False, na=False, regex=False)]
-        if f_ac: df_f = df_f[df_f['Nível de Acesso'].str.contains(f_ac, case=False, na=False, regex=False)]
+        if f_doc and 'Documento' in df_f.columns: df_f = df_f[df_f['Documento'].str.contains(f_doc, case=False, na=False, regex=False)]
+        if f_em and 'Email' in df_f.columns: df_f = df_f[df_f['Email'].str.contains(f_em, case=False, na=False, regex=False)]
+        if f_nm and 'Nome' in df_f.columns: df_f = df_f[df_f['Nome'].str.contains(f_nm, case=False, na=False, regex=False)]
+        if f_ac and 'Nível de Acesso' in df_f.columns: df_f = df_f[df_f['Nível de Acesso'].str.contains(f_ac, case=False, na=False, regex=False)]
 
         # --- CONTADOR E SELEÇÃO EM MASSA ---
         st.info(f"📊 Mostrando **{len(df_f)}** de **{len(df)}** registros totais.")
@@ -706,8 +881,13 @@ with tab2:
             if 'viewer' in v: return 'background-color: #e6ffcc'
             return 'color: #999'
 
+        if 'Nível de Acesso' in df_f.columns:
+            styled_df = df_f.style.map(style_acc, subset=['Nível de Acesso'])
+        else:
+            styled_df = df_f
+
         edited_df = st.data_editor(
-            df_f.style.map(style_acc, subset=['Nível de Acesso']),
+            styled_df,
             use_container_width=True, hide_index=True,
             column_config={"Doc ID": None, "Selecionar": st.column_config.CheckboxColumn("Sel", default=False)},
             disabled=["Documento", "Email", "Nome", "Nível de Acesso", "Workspace"],
@@ -732,9 +912,13 @@ with tab2:
                     target_id = doc_opts[dest]
                     for _, row in selected.iterrows():
                         role = 'editors'
-                        if 'owner' in row['Nível de Acesso'].lower(): role = 'owners'
-                        elif 'viewer' in row['Nível de Acesso'].lower(): role = 'viewers'
-                        update_doc_access(CURRENT_BASE_URL, target_id, row['Email'], role)
+                        if 'Nível de Acesso' in row and isinstance(row['Nível de Acesso'], str):
+                            if 'owner' in row['Nível de Acesso'].lower(): role = 'owners'
+                            elif 'viewer' in row['Nível de Acesso'].lower(): role = 'viewers'
+                        
+                        target_email = row.get('Email')
+                        if target_email and target_email != '-':
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, target_id, target_email, role)
                     st.toast("Cópia finalizada!")
                     st.cache_data.clear(); time.sleep(1); st.rerun()
 
@@ -742,10 +926,14 @@ with tab2:
                     target_id = doc_opts[dest]
                     for _, row in selected.iterrows():
                         role = 'editors'
-                        if 'owner' in row['Nível de Acesso'].lower(): role = 'owners'
-                        elif 'viewer' in row['Nível de Acesso'].lower(): role = 'viewers'
-                        update_doc_access(CURRENT_BASE_URL, target_id, row['Email'], role)
-                        update_doc_access(CURRENT_BASE_URL, row['Doc ID'], row['Email'], None)
+                        if 'Nível de Acesso' in row and isinstance(row['Nível de Acesso'], str):
+                            if 'owner' in row['Nível de Acesso'].lower(): role = 'owners'
+                            elif 'viewer' in row['Nível de Acesso'].lower(): role = 'viewers'
+                        
+                        target_email = row.get('Email')
+                        if target_email and target_email != '-':
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, target_id, target_email, role)
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, row['Doc ID'], target_email, None)
                     st.toast("Movimentação finalizada!")
                     st.cache_data.clear(); time.sleep(1); st.rerun()
 
@@ -753,13 +941,17 @@ with tab2:
                 new_lvl = st.selectbox("Alterar Nível", ["viewers", "editors", "owners"], key="bulk_lvl")
                 if st.button("✏️ Atualizar Selecionados", key="btn_bulk_upd"):
                     for _, row in selected.iterrows():
-                        update_doc_access(CURRENT_BASE_URL, row['Doc ID'], row['Email'], new_lvl)
+                        target_email = row.get('Email')
+                        if target_email and target_email != '-':
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, row['Doc ID'], target_email, new_lvl)
                     st.toast("Nível atualizado!")
                     st.cache_data.clear(); time.sleep(1); st.rerun()
                 
                 if st.button("🗑️ Remover Selecionados", key="btn_bulk_rm", type="primary"):
                     for _, row in selected.iterrows():
-                        update_doc_access(CURRENT_BASE_URL, row['Doc ID'], row['Email'], None)
+                        target_email = row.get('Email')
+                        if target_email and target_email != '-':
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, row['Doc ID'], target_email, None)
                     st.toast("Removidos com sucesso!")
                     st.cache_data.clear(); time.sleep(1); st.rerun()
 
@@ -790,7 +982,7 @@ with tab3:
                         errors = []
                         with st.status(f"Adicionando {len(emails)} usuários...", expanded=True) as status:
                             for em in emails:
-                                s, m = update_doc_access(CURRENT_BASE_URL, tid, em, rl)
+                                s, m = update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, em, rl)
                                 if s:
                                     success_count += 1
                                     st.write(f"✅ {em}: Sucesso")
@@ -818,7 +1010,7 @@ with tab3:
                         errors = []
                         with st.status(f"Removendo {len(emails_r)} usuários...", expanded=True) as status:
                             for em in emails_r:
-                                s, m = update_doc_access(CURRENT_BASE_URL, tid, em, None)
+                                s, m = update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, em, None)
                                 if s:
                                     success_count += 1
                                     st.write(f"✅ {em}: Removido")
@@ -856,10 +1048,11 @@ def backup_rules_locally(doc_name, rules_data):
     except Exception as e:
         return False, str(e)
 
-def find_or_create_resource(base_url, doc_id, resource_str):
+def find_or_create_resource(base_url, api_key, doc_id, resource_str):
     """
     Parses resource string "Table [Cols]" -> finds/creates ID in _grist_ACLResources.
     """
+    base_url = base_url.strip().rstrip("/")
     # Parse string
     import re
     table_id = "*"
@@ -880,7 +1073,7 @@ def find_or_create_resource(base_url, doc_id, resource_str):
     # 1. Search existing
     # We need to fetch all resources again to check. Inefficient for loop, but safest.
     # Optimization: Pass a cache map if possible. For now, fetch all.
-    all_res = fetch_table_records(base_url, doc_id, '_grist_ACLResources')
+    all_res = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
     for r in all_res:
         rf = r['fields']
         r_tid = rf.get('tableId') or "*"
@@ -898,21 +1091,22 @@ def find_or_create_resource(base_url, doc_id, resource_str):
             }
         }]
     }
-    resp = requests.post(url, headers=HEADERS, json=payload)
+    resp = requests.post(url, headers=get_auth_headers(api_key), json=payload)
     resp.raise_for_status()
     # Returns {records: [{id: 123}]}
     return resp.json()['records'][0]['id']
 
-def apply_denormalized_rules(base_url, doc_id, new_rules_json):
+def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
     """Renormalizes and overwrites _grist_ACLRules."""
+    base_url = base_url.strip().rstrip("/")
     # 1. Delete all existing Rules
     # Fetch IDs first
-    current = fetch_table_records(base_url, doc_id, '_grist_ACLRules')
+    current = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
     if current:
         ids_to_del = [r['id'] for r in current]
         # Chunking delete just in case? API usually handles valid payloads.
         url_del = f"{base_url}/docs/{doc_id}/tables/_grist_ACLRules/data/delete"
-        requests.post(url_del, headers=HEADERS, json=ids_to_del)
+        requests.post(url_del, headers=get_auth_headers(api_key), json=ids_to_del)
     
     # 2. Prepare new records
     records_to_add = []
@@ -921,7 +1115,7 @@ def apply_denormalized_rules(base_url, doc_id, new_rules_json):
     # Actually, find_or_create does a fetch. To optimize, we should fetch once.
     # Let's just trust find_or_create for now, or optimizing is better.
     # Simple optimization: Fetch all resources once, build map.
-    all_res = fetch_table_records(base_url, doc_id, '_grist_ACLResources')
+    all_res = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
     res_map = {} # Key: "tid|cids" -> ID
     for r in all_res:
         rf = r['fields']
@@ -947,7 +1141,7 @@ def apply_denormalized_rules(base_url, doc_id, new_rules_json):
             # Create
             url_res = f"{base_url}/docs/{doc_id}/tables/_grist_ACLResources/records"
             payload = {'records': [{'fields': {'tableId': tid, 'colIds': cids}}]}
-            resp = requests.post(url_res, headers=HEADERS, json=payload)
+            resp = requests.post(url_res, headers=get_auth_headers(api_key), json=payload)
             if resp.status_code == 200:
                 new_id = resp.json()['records'][0]['id']
                 res_map[key] = new_id
@@ -969,7 +1163,7 @@ def apply_denormalized_rules(base_url, doc_id, new_rules_json):
     # 3. Batch Insert
     if records_to_add:
         url_add = f"{base_url}/docs/{doc_id}/tables/_grist_ACLRules/records"
-        requests.post(url_add, headers=HEADERS, json={'records': records_to_add})
+        requests.post(url_add, headers=get_auth_headers(api_key), json={'records': records_to_add})
 
     return True
 
@@ -983,7 +1177,7 @@ with tab4:
         all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
         doc_opts_r = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
     else:
-        wss = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         doc_opts_r = {}
         for ws in wss:
             for d in ws.get('docs', []):
@@ -1000,7 +1194,7 @@ with tab4:
         with sub_t1:
             if st.button("🔍 Carregar Regras", key="btn_load_acl_audit"):
                 with st.spinner("Buscando metadados de regras..."):
-                    data = get_denormalized_rules(CURRENT_BASE_URL, target_r_id)
+                    data = get_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, target_r_id)
                     st.session_state.acl_audit_data = data
                     if not data:
                         st.warning("Nenhuma regra encontrada ou erro de permissão.")
@@ -1067,7 +1261,7 @@ with tab4:
                         
                         # 1. Backup Current
                         st.info("Criando backup das regras atuais...")
-                        current_data = get_denormalized_rules(CURRENT_BASE_URL, target_r_id)
+                        current_data = get_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, target_r_id)
                         ok_bkp, path_bkp = backup_rules_locally(target_r_name, current_data)
                         
                         if ok_bkp:
@@ -1075,7 +1269,7 @@ with tab4:
                             
                             # 2. Apply
                             with st.spinner("Aplicando novas regras..."):
-                                apply_denormalized_rules(CURRENT_BASE_URL, target_r_id, new_rules)
+                                apply_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, target_r_id, new_rules)
                                 st.balloons()
                                 st.success("Regras atualizadas com sucesso! Verifique na aba 'Visualizar'.")
                                 st.cache_data.clear()
@@ -1180,7 +1374,7 @@ with tab6:
         all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
         doc_opts_audit = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
     else:
-        wss = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         doc_opts_audit = {}
         for ws in wss:
             for d in ws.get('docs', []):
@@ -1204,7 +1398,7 @@ with tab6:
         doc_id_audit = doc_opts_audit[sel_doc_audit]
         
         # 2. Table
-        tables = get_tables(CURRENT_BASE_URL, doc_id_audit)
+        tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit)
         table_opts = {t['id']: t['id'] for t in tables}
         
         def_tbl_idx = None
@@ -1219,7 +1413,7 @@ with tab6:
         
         if sel_table_audit:
             # 3. Columns
-            cols = get_columns(CURRENT_BASE_URL, doc_id_audit, sel_table_audit)
+            cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, sel_table_audit)
             col_opts = {c['id']: c['fields']['label'] for c in cols}
             col_map_rev = {v: k for k, v in col_opts.items()}
             sorted_col_labels = sorted(col_opts.values())
@@ -1262,7 +1456,7 @@ with tab6:
                         
                         # Fetch cols of target table to let user pick the email field
                         # We use a unique key for the selectbox based on label
-                        ref_cols_raw = get_columns(CURRENT_BASE_URL, doc_id_audit, ref_table)
+                        ref_cols_raw = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, ref_table)
                         ref_col_opts = {rc['id']: rc['fields']['label'] for rc in ref_cols_raw}
                         
                         # Try to guess 'Email'
@@ -1297,7 +1491,7 @@ with tab6:
                         m_cid = col_map_rev[m_col_label]
                         
                         # Fetch all tables to pick target
-                        all_tables = get_tables(CURRENT_BASE_URL, doc_id_audit)
+                        all_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit)
                         # tables have 'id'
                         # sort by id
                         all_tbl_ids = sorted([t['id'] for t in all_tables])
@@ -1306,7 +1500,7 @@ with tab6:
                         
                         if m_target_table:
                              # Fetch cols
-                             m_ref_cols = get_columns(CURRENT_BASE_URL, doc_id_audit, m_target_table)
+                             m_ref_cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, m_target_table)
                              m_ref_opts = {rc['id']: rc['fields']['label'] for rc in m_ref_cols}
                              m_sorted_rc = sorted(m_ref_opts.values())
                              
@@ -1357,7 +1551,7 @@ with tab6:
                         
                         for src_cid, cfg in ref_configs.items():
                             try:
-                                t_recs = fetch_table_records(CURRENT_BASE_URL, doc_id_audit, cfg['target_table'])
+                                t_recs = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, cfg['target_table'])
                                 lookup = {}
                                 tgt_cid = cfg['target_col']
                                 for r in t_recs:
@@ -1371,14 +1565,14 @@ with tab6:
                                 st.error(f"Erro ao resolver referência para {cfg['target_table']}: {e}")
 
                         # A. Get Actual Explicit Access
-                        doc_users = get_doc_users(CURRENT_BASE_URL, doc_id_audit)
+                        doc_users = get_doc_users(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit)
                         actual_access_map = {} 
                         for u in doc_users:
                             if u.get('email') and u.get('access'):
                                 actual_access_map[u['email'].strip().lower()] = u.get('access')
                         
                         # B. Get Reference Data
-                        records = fetch_table_records(CURRENT_BASE_URL, doc_id_audit, sel_table_audit)
+                        records = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, sel_table_audit)
                         
                         # --- DEBUG SECTION ---
                         with st.expander("🕵️ Debug Dados (Resumido)"):
@@ -1564,7 +1758,7 @@ with tab6:
                                         if st.button("✨ Conceder Acesso Selecionado", key="btn_audit_grant"):
                                             progress = st.progress(0)
                                             for i, em in enumerate(to_grant):
-                                                update_doc_access(CURRENT_BASE_URL, doc_id_audit, em, "viewers")
+                                                update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, em, "viewers")
                                                 progress.progress((i+1)/len(to_grant))
                                             st.success("Acessos concedidos!")
                                             time.sleep(1); st.rerun()
@@ -1578,12 +1772,92 @@ with tab6:
                                         if st.button("🗑️ Remover Acesso Selecionado", type="primary", key="btn_audit_revoke"):
                                             progress = st.progress(0)
                                             for i, em in enumerate(to_revoke):
-                                                update_doc_access(CURRENT_BASE_URL, doc_id_audit, em, None)
+                                                update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_audit, em, None)
                                                 progress.progress((i+1)/len(to_revoke))
                                             st.success("Acessos removidos!")
                                             time.sleep(1); st.rerun()
                                     else:
                                         st.info("Nenhum usuário órfão na seleção.")
+
+# --- TAB 7: Template Cloner ---
+with sub_d2:
+    st.header("🚚 Transportador de Tabelas (Com Dados)")
+    st.warning("⚠️ Esta ferramenta copia a Estrutura (Colunas/Fórmulas) E os Registros atuais. Colunas de Referência usarão os IDs numéricos originais.")
+    
+    if st.session_state.mapped_data is not None:
+        all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
+        doc_opts_trans = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
+        
+        col_t1, col_t2 = st.columns(2)
+        src_doc_name = col_t1.selectbox("Documento de Origem", sorted(doc_opts_trans.keys()), index=None, key="trans_src_doc")
+        
+        if src_doc_name:
+            src_doc_id = doc_opts_trans[src_doc_name]
+            src_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, src_doc_id)
+            src_table_id = col_t2.selectbox("Tabela para Transportar", sorted([t['id'] for t in src_tables if not t['id'].startswith('_grist')]), index=None, key="trans_src_tbl")
+            
+            target_doc_names = st.multiselect("Documentos de Destino", sorted(doc_opts_trans.keys()), key="trans_targets")
+            
+            if src_table_id and target_doc_names:
+                if st.button("🚀 Iniciar Transporte de Dados", type="primary"):
+                    # 1. Fetch Source Schema
+                    with st.spinner("Lendo estrutura..."):
+                        cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, src_doc_id, src_table_id)
+                        schema = [{"id": c['id'], "fields": {k: v for k, v in c['fields'].items() if k in ['label', 'type', 'isFormula', 'formula', 'widgetOptions']}} for c in cols]
+                        formula_col_ids = {c['id'] for c in cols if c['fields'].get('isFormula')}
+                    
+                    # 2. Fetch Source Data
+                    with st.spinner("Extraindo registros..."):
+                        records = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, src_doc_id, src_table_id)
+                    
+                    if not records:
+                        st.info("A tabela de origem está vazia. Apenas a estrutura será clonada.")
+
+                    progress_trans = st.progress(0)
+                    log_trans = st.empty()
+                    logs = []
+
+                    for idx, t_name in enumerate(target_doc_names):
+                        t_id = doc_opts_trans[t_name]
+                        logs.append(f"--- Documento: {t_name} ---")
+                        
+                        # A. Create Structure
+                        ok_t, msg_t = create_table(CURRENT_BASE_URL, AUTH_API_KEY, t_id, src_table_id, schema)
+                        if ok_t:
+                            logs.append(f"✅ Estrutura criada.")
+                        elif msg_t == "EXISTING":
+                            logs.append(f"ℹ️ Tabela já existente. Sincronizando dados...")
+                        else:
+                            logs.append(f"❌ Erro estrutura: {msg_t}")
+                            continue
+
+                        # B. Prepare & Push Data
+                        if records:
+                            clean_records = []
+                            for r in records:
+                                # Filter out formula columns (Grist calculates them) and internal helpers
+                                f_data = {k: v for k, v in r['fields'].items() if k not in formula_col_ids and not k.startswith('gristHelper')}
+                                clean_records.append(f_data)
+                            
+                            # Batch Insert (500 per hit)
+                            batch_size = 500
+                            total_batches = (len(clean_records) + batch_size - 1) // batch_size
+                            
+                            for b_idx in range(total_batches):
+                                start = b_idx * batch_size
+                                end = start + batch_size
+                                ok_r, msg_r = add_records(CURRENT_BASE_URL, AUTH_API_KEY, t_id, clean_records[start:end])
+                                if not ok_r:
+                                    logs.append(f"⚠️ Erro no lote {b_idx+1}: {msg_r}")
+                            
+                            logs.append(f"✅ {len(clean_records)} registros transportados.")
+                        
+                        progress_trans.progress((idx + 1) / len(target_doc_names))
+                        log_trans.code("\n".join(logs))
+                    
+                    st.success("Transporte concluído!")
+    else:
+        st.info("Realize o mapeamento na categoria 'Gestão de Acessos' para listar os documentos.")
 
 # --- TAB 7: Template Cloner ---
 with tab7:
@@ -1594,7 +1868,7 @@ with tab7:
         all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
         doc_opts_clone = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
     else:
-        wss = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         doc_opts_clone = {}
         for ws in wss:
             for d in ws.get('docs', []):
@@ -1606,14 +1880,14 @@ with tab7:
     
     if src_doc_name:
         src_doc_id = doc_opts_clone[src_doc_name]
-        src_tables = get_tables(CURRENT_BASE_URL, src_doc_id)
+        src_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, src_doc_id)
         src_table_ids = sorted([t['id'] for t in src_tables])
         src_table_id = col_src2.selectbox("Tabela de Origem", src_table_ids, index=None, key="clone_src_table")
         
         if src_table_id:
             # Fetch Schema
             with st.status("Lendo estrutura da tabela...", expanded=False):
-                raw_cols = get_columns(CURRENT_BASE_URL, src_doc_id, src_table_id)
+                raw_cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, src_doc_id, src_table_id)
                 
                 # Filter out system columns and internal metadata
                 # Grist API returns 'id' and 'fields'
@@ -1652,7 +1926,7 @@ with tab7:
                         logs.append(f"--- Processando: {t_name} ---")
                         
                         # 1. Try to create Table WITH columns in one go
-                        ok_t, msg_t = create_table(CURRENT_BASE_URL, t_id, src_table_id, clean_cols)
+                        ok_t, msg_t = create_table(CURRENT_BASE_URL, AUTH_API_KEY, t_id, src_table_id, clean_cols)
                         
                         if ok_t:
                             logs.append(f"✅ {msg_t}")
@@ -1660,7 +1934,7 @@ with tab7:
                             logs.append(f"ℹ️ Tabela '{src_table_id}' já existe. Verificando colunas...")
                             # 2. Add Columns only (Grist will skip existing ones if we are lucky, 
                             # or we can try to be safe and just log it)
-                            ok_c, msg_c = add_columns(CURRENT_BASE_URL, t_id, src_table_id, clean_cols)
+                            ok_c, msg_c = add_columns(CURRENT_BASE_URL, AUTH_API_KEY, t_id, src_table_id, clean_cols)
                             logs.append(f"Colunas: {msg_c}")
                         else:
                             logs.append(f"❌ {msg_t}")
@@ -1684,7 +1958,7 @@ with tab8:
     new_doc_name = col_c1.text_input("Nome do Novo Documento", placeholder="Ex: PQC 2026 - Novo Doc", key="bp_new_doc_input")
     
     # Get Workspaces for selection
-    workspaces_raw = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+    workspaces_raw = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
     ws_opts = {ws['name']: ws['id'] for ws in workspaces_raw}
     sel_ws_name = col_c2.selectbox("Workspace Destino", sorted(ws_opts.keys()), key="blueprint_ws_sel")
 
@@ -1694,7 +1968,7 @@ with tab8:
         else:
             ws_id = ws_opts[sel_ws_name]
             with st.spinner(f"Criando documento '{new_doc_name}'..."):
-                ok_doc, res_doc = create_document(CURRENT_BASE_URL, ws_id, new_doc_name)
+                ok_doc, res_doc = create_document(CURRENT_BASE_URL, AUTH_API_KEY, ws_id, new_doc_name)
                 if ok_doc:
                     st.success(f"✅ Documento criado com sucesso! ID: {res_doc}")
                     st.session_state.last_created_doc_id = res_doc
@@ -1742,11 +2016,11 @@ with tab8:
         else:
             with st.spinner("Extraindo estrutura do documento..."):
                 t_id = doc_opts_bp[sel_target_doc_name]
-                tables = get_tables_no_cache(CURRENT_BASE_URL, t_id)
+                tables = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, t_id)
                 blueprint_fetch = {"tables": []}
                 for t in tables:
                     if t['id'].startswith('_grist'): continue
-                    cols = get_columns_no_cache(CURRENT_BASE_URL, t_id, t['id'])
+                    cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, t_id, t['id'])
                     clean_cols = []
                     for c in cols:
                         f = c['fields']
@@ -1817,7 +2091,7 @@ with tab8:
                 logs_bp = []
                 
                 # 0. Fetch existing structure to avoid duplicates
-                existing_tables = get_tables_no_cache(CURRENT_BASE_URL, target_doc_id)
+                existing_tables = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id)
                 existing_table_ids = {t['id'] for t in existing_tables}
                 
                 with st.status("Executando Blueprint em 2 etapas...", expanded=True) as status_container:
@@ -1829,14 +2103,14 @@ with tab8:
                         
                         if tables_to_del:
                             status_container.write(f"🗑️ Removendo {len(tables_to_del)} tabelas em lote...")
-                            ok_del, msg_del = delete_tables_batch(CURRENT_BASE_URL, target_doc_id, tables_to_del)
+                            ok_del, msg_del = delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, tables_to_del)
                             if ok_del:
                                 logs_bp.append(f"🗑️ {msg_del}")
                             else:
                                 logs_bp.append(f"⚠️ Erro ao limpar documento: {msg_del}")
                         
                         # Refresh existing list after deletion
-                        existing_tables = get_tables_no_cache(CURRENT_BASE_URL, target_doc_id)
+                        existing_tables = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id)
                         existing_table_ids = {t['id'] for t in existing_tables}
 
                     # --- ETAPA 1: CRIAR TABELAS (ESQUELETO SEM REFS) ---
@@ -1850,7 +2124,7 @@ with tab8:
                             logs_bp.append(f"ℹ️ {t_id}: Tabela já existe. Verificando colunas...")
                             
                             # Get existing columns for this table
-                            ex_cols = get_columns_no_cache(CURRENT_BASE_URL, target_doc_id, t_id)
+                            ex_cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, t_id)
                             ex_col_ids = {c['id'] for c in ex_cols}
                             
                             # Filter only NEW columns
@@ -1869,7 +2143,7 @@ with tab8:
                             
                             if new_cols_to_add:
                                 status_container.write(f"⏳ Adicionando {len(new_cols_to_add)} colunas novas em **{t_id}**...")
-                                ok_c, msg_c = add_columns(CURRENT_BASE_URL, target_doc_id, t_id, new_cols_to_add)
+                                ok_c, msg_c = add_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, t_id, new_cols_to_add)
                                 logs_bp.append(f"   - Colunas novas: {msg_c}")
                             else:
                                 logs_bp.append(f"   - Nenhuma coluna nova para adicionar.")
@@ -1901,7 +2175,7 @@ with tab8:
                                     "fields": f_payload
                                 })
 
-                            ok_bp, msg_bp = create_table(CURRENT_BASE_URL, target_doc_id, t_id, formatted_skeleton)
+                            ok_bp, msg_bp = create_table(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, t_id, formatted_skeleton)
                             if ok_bp:
                                 logs_bp.append(f"✅ {t_id}: Tabela criada.")
                             else:
@@ -1916,7 +2190,7 @@ with tab8:
                         t_cols_all = tbl.get('columns', [])
                         
                         # Get current columns again to be safe
-                        curr_cols = get_columns_no_cache(CURRENT_BASE_URL, target_doc_id, t_id)
+                        curr_cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, t_id)
                         curr_col_ids = {c['id'] for c in curr_cols}
                         
                         t_cols_refs = [
@@ -1938,7 +2212,7 @@ with tab8:
                                 })
                             
                             status_container.write(f"🔗 Vinculando refs em: **{t_id}**...")
-                            ok_c, msg_c = add_columns(CURRENT_BASE_URL, target_doc_id, t_id, formatted_refs)
+                            ok_c, msg_c = add_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, t_id, formatted_refs)
                             if ok_c:
                                 logs_bp.append(f"🔗 {t_id}: Referências novas OK.")
                             else:
@@ -1991,10 +2265,12 @@ with tab9:
     
     # 1. Fetch all documents
     if st.session_state.mapped_data is not None:
-        all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID', 'Workspace']].drop_duplicates()
+        m_data = st.session_state.mapped_data
+        available_cols = [c for c in ['Documento', 'Doc ID', 'Workspace'] if c in m_data.columns]
+        all_docs_list = m_data[available_cols].drop_duplicates()
     else:
         with st.spinner("Buscando lista de documentos..."):
-            workspaces = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+            workspaces = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
             all_docs = []
             for ws in workspaces:
                 for doc in ws.get('docs', []):
@@ -2011,7 +2287,7 @@ with tab9:
         # Method A: Org API (Fast but might fail)
         if c_btn1.button("🚀 Relatório Consolidado (Rápido)", key="load_global_usage_btn", use_container_width=True):
             with st.spinner("Solicitando relatório da organização..."):
-                org_usage_data = get_org_usage(CURRENT_BASE_URL, selected_org_id)
+                org_usage_data = get_org_usage(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
                 if org_usage_data and 'docs' in org_usage_data:
                     usage_map = {d['id']: d for d in org_usage_data['docs']}
                     usage_results = []
@@ -2046,10 +2322,10 @@ with tab9:
             def scan_single_doc(doc_row):
                 d_id = doc_row['Doc ID']
                 # 1. Get real file size (Data)
-                real_size = get_real_data_size(CURRENT_BASE_URL, d_id)
+                real_size = get_real_data_size(CURRENT_BASE_URL, AUTH_API_KEY, d_id)
                 
                 # 2. Try usage API for rows
-                usage, status = get_doc_usage(CURRENT_BASE_URL, d_id)
+                usage, status = get_doc_usage(CURRENT_BASE_URL, AUTH_API_KEY, d_id)
                 
                 rows_t = 0
                 if usage:
@@ -2058,10 +2334,10 @@ with tab9:
                 else:
                     # Fallback row count
                     try:
-                        tables = get_tables(CURRENT_BASE_URL, d_id)
+                        tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, d_id)
                         for t in tables:
                             if not t['id'].startswith('_grist'):
-                                rows_t += get_table_row_count(CURRENT_BASE_URL, d_id, t['id'])
+                                rows_t += get_table_row_count(CURRENT_BASE_URL, AUTH_API_KEY, d_id, t['id'])
                     except: pass
                     att_pct = 0.0
 
@@ -2104,14 +2380,14 @@ with tab10:
         all_docs_list = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
         doc_opts_pop = {r['Documento']: r['Doc ID'] for _, r in all_docs_list.iterrows()}
     else:
-        wss = get_workspaces_and_docs(CURRENT_BASE_URL, selected_org_id)
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         doc_opts_pop = {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
     
     sel_doc_pop_name = st.selectbox("1. Selecione o Documento", sorted(doc_opts_pop.keys()), index=None, key="pop_doc_sel")
     
     if sel_doc_pop_name:
         doc_id_pop = doc_opts_pop[sel_doc_pop_name]
-        tables_pop = get_tables(CURRENT_BASE_URL, doc_id_pop)
+        tables_pop = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_pop)
         table_ids_pop = sorted([t['id'] for t in tables_pop if not t['id'].startswith('_grist')])
         
         sel_tables_pop = st.multiselect("2. Selecione as Tabelas para popular", table_ids_pop, key="pop_tables_sel")
@@ -2120,7 +2396,7 @@ with tab10:
             if st.button("🪄 Gerar Template para LLM"):
                 template = []
                 for t_id in sel_tables_pop:
-                    cols = get_columns(CURRENT_BASE_URL, doc_id_pop, t_id)
+                    cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_pop, t_id)
                     col_info = {c['id']: c['fields'].get('type', 'Text') for c in cols if not c['fields'].get('isFormula')}
                     
                     table_template = {
@@ -2169,7 +2445,7 @@ with tab10:
                                             clean_records.append(clean_r)
                                         
                                         status_pop.write(f"📥 Inserindo {len(clean_records)} registros em **{t_id}**...")
-                                        ok, msg = add_records(CURRENT_BASE_URL, doc_id_pop, t_id, clean_records)
+                                        ok, msg = add_records(CURRENT_BASE_URL, AUTH_API_KEY, doc_id_pop, t_id, clean_records)
                                         if ok:
                                             status_pop.write(f"✅ {t_id}: {msg}")
                                         else:
