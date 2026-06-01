@@ -5,3 +5,4 @@ __pycache__/
 .streamlit/
 backups/
 mapping_cache.json
+saved_servers.json
