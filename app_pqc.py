@@ -236,19 +236,19 @@ def get_columns_no_cache(base_url, api_key, doc_id, table_id):
         return []
 
 def fetch_table_records(base_url, api_key, doc_id, table_name):
-    """Fetches all records from a table."""
+    """Fetches all records from a table. Returns (records, error_msg)."""
     base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_name}/records"
         response = requests.get(url, headers=get_auth_headers(api_key))
         if response.status_code == 404:
-            return []
+            return [], None # Table doesn't exist
         if response.status_code == 403:
-            raise PermissionError("Acesso negado. É necessário ser OWNER do documento.")
+            return [], "Acesso negado (403). Verifique se você é OWNER do documento."
         response.raise_for_status()
-        return response.json().get('records', [])
-    except Exception:
-        return []
+        return response.json().get('records', []), None
+    except Exception as e:
+        return [], str(e)
 
 def add_records(base_url, api_key, doc_id, table_id, records):
     """Adds multiple records to a table."""
@@ -287,6 +287,19 @@ def add_columns(base_url, api_key, doc_id, table_id, columns_payload):
         response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
             return True, "Colunas adicionadas."
+        return False, f"Erro {response.status_code}: {response.text}"
+    except Exception as e:
+        return False, str(e)
+
+def update_columns(base_url, api_key, doc_id, table_id, columns_payload):
+    """Updates existing columns metadata (type, formula, etc) via PATCH."""
+    base_url = base_url.strip().rstrip("/")
+    try:
+        url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
+        payload = {"columns": columns_payload}
+        response = requests.patch(url, headers=get_auth_headers(api_key), json=payload)
+        if response.status_code == 200:
+            return True, "Colunas atualizadas."
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
@@ -670,29 +683,207 @@ elif main_menu == "🏗️ Engenharia de Dados":
             if src_n:
                 sid = doc_opts_t[src_n]
                 tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, sid)
-                sel_tbls = c2.multiselect("Tabelas", sorted([t['id'] for t in tables if not t['id'].startswith('_grist')]))
+                sel_tbls = c2.multiselect("Tabelas para Transportar", sorted([t['id'] for t in tables if not t['id'].startswith('_grist')]))
                 dest_n = st.selectbox("Doc Destino", sorted(doc_opts_t.keys()), index=None, key="t_dest")
+                
                 if sel_tbls and dest_n:
-                    if st.button("🚀 Transportar"):
+                    if st.button("🚀 Iniciar Transporte em Massa", type="primary"):
                         did = doc_opts_t[dest_n]
-                        for tid in sel_tbls:
-                            cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, sid, tid)
-                            schema = []
-                            fids = set()
-                            for c in cols:
-                                if c['id'] == 'manualSort' or c['id'].startswith('gristHelper'): continue
-                                f = c['fields']
-                                if f.get('isFormula'): fids.add(c['id'])
-                                schema.append({"id": c['id'], "fields": {"label": f.get('label'), "type": f.get('type'), "isFormula": f.get('isFormula', False), "formula": f.get('formula', ''), "widgetOptions": f.get('widgetOptions')}})
-                            recs = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, sid, tid)
-                            ok, m = create_table(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, schema)
-                            if ok: time.sleep(0.5)
-                            if recs:
-                                clean_r = [{k:v for k,v in r['fields'].items() if k not in fids and not k.startswith('gristHelper') and k != 'manualSort'} for r in recs]
+                        report = []
+                        
+                        with st.status("🚀 Iniciando Transporte Atômico...", expanded=True) as status:
+                            # --- FASE 1: ESTRUTURAS "PLANAS" (Apenas Texto) ---
+                            status.write("### 🏗️ Fase 1: Criando Estruturas Planas")
+                            table_tasks = []
+                            source_col_map = {} # (table_id, numeric_id) -> string_id
+                            
+                            for tid in sel_tbls:
+                                cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, sid, tid)
+                                flat_schema = []
+                                full_schema = []
+                                fids_to_skip = set()
+                                
+                                for c in cols:
+                                    cid_str = c['id']
+                                    if cid_str == 'manualSort' or cid_str.startswith('gristHelper'): continue
+                                    f = c['fields']
+                                    
+                                    # Map source numeric IDs to string IDs
+                                    source_col_map[(tid, cid_str)] = cid_str
+                                    source_col_map[(tid, f.get('colRef'))] = cid_str
+
+                                    full_schema.append({"id": cid_str, "fields": f})
+
+                                    # Flat storage-only version
+                                    c_type = "Text"
+                                    if f.get('type') == "Numeric": c_type = "Numeric"
+                                    flat_schema.append({"id": cid_str, "fields": {"label": f.get('label'), "type": c_type, "isFormula": False, "formula": ""}})
+                                    
+                                    if f.get('isFormula'): fids_to_skip.add(cid_str)
+                                
+                                ok_c, m_c = create_table(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, flat_schema)
+                                status.write(f"  - {tid}: {'✅ Criada' if ok_c else ('ℹ️ Já existe' if m_c == 'EXISTING' else '❌ Erro: '+m_c)}")
+                                table_tasks.append({"id": tid, "fids": fids_to_skip, "ready": ok_c or m_c == "EXISTING", "schema": full_schema})
+
+                            time.sleep(2)
+
+                            # --- FASE 2: DADOS ---
+                            status.write("### 📥 Fase 2: Inserindo Dados")
+                            for task in table_tasks:
+                                tid = task["id"]
+                                if not task["ready"]: continue
+                                recs, err_f = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, sid, tid)
+                                if err_f or not recs:
+                                    report.append({"Tabela": tid, "Status": "ℹ️ Vazia ou Erro", "Linhas": 0}); continue
+
+                                clean_r = [{k:v for k,v in r['fields'].items() if k not in task["fids"] and not k.startswith('gristHelper') and k != 'manualSort'} for r in recs]
+                                success_cnt = 0
                                 for i in range(0, len(clean_r), 500):
-                                    add_records(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, clean_r[i:i+500])
-                        st.success("Transporte OK!")
-        else: st.info("Mapeamento necessário.")
+                                    ok_r, _ = add_records(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, clean_r[i:i+500])
+                                    if ok_r: success_cnt += len(clean_r[i:i+500])
+                                
+                                status.write(f"  - {tid}: ✅ {success_cnt} registros.")
+                                report.append({"Tabela": tid, "Status": "✅ Sucesso", "Linhas": success_cnt})
+                                time.sleep(0.5)
+
+                            # --- FASE 3: ATIVAÇÃO (Mapping IDs) ---
+                            status.write("### ⚙️ Fase 3: Restaurando Inteligência")
+                            
+                            # Map destination string IDs to new numeric IDs
+                            dest_col_map = {} # (table_id, string_id) -> numeric_id
+                            for tid in sel_tbls:
+                                d_cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, did, tid)
+                                for dc in d_cols:
+                                    dest_col_map[(tid, dc['id'])] = dc['fields'].get('colRef')
+
+                            for task in table_tasks:
+                                if not task["ready"]: continue
+                                tid = task["id"]
+                                update_payload = []
+                                
+                                for col in task["schema"]:
+                                    f = col['fields']
+                                    cid = col['id']
+                                    
+                                    # Base fields for ALL columns in the batch
+                                    new_fields = {
+                                        "type": f.get('type'),
+                                        "isFormula": f.get('isFormula', False),
+                                        "formula": f.get('formula', ''),
+                                        "widgetOptions": f.get('widgetOptions', ''),
+                                        "visibleCol": None, # Standardize
+                                        "displayCol": None  # Standardize
+                                    }
+                                    
+                                    # MAP INTERNAL IDs for References
+                                    if str(f.get('type')).startswith("Ref:"):
+                                        ref_table = str(f.get('type')).split(":")[1]
+                                        # Translate visibleCol
+                                        v_id = f.get('visibleCol')
+                                        if v_id and (ref_table, v_id) in source_col_map:
+                                            v_str = source_col_map[(ref_table, v_id)]
+                                            if (ref_table, v_str) in dest_col_map:
+                                                new_fields["visibleCol"] = dest_col_map[(ref_table, v_str)]
+                                        
+                                        # Translate displayCol
+                                        d_id = f.get('displayCol')
+                                        if d_id and (tid, d_id) in source_col_map:
+                                            d_str = source_col_map[(tid, d_id)]
+                                            if (tid, d_str) in dest_col_map:
+                                                new_fields["displayCol"] = dest_col_map[(tid, d_str)]
+
+                                    update_payload.append({"id": cid, "fields": new_fields})
+                                
+                                ok_up, msg_up = update_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, update_payload)
+                                if ok_up: status.write(f"  - {tid}: ✅ Inteligência ativada.")
+                                else: status.write(f"  - {tid}: ⚠️ Erro: {msg_up}")
+                                time.sleep(0.5)
+
+                            status.update(label="Transporte Concluído!", state="complete")
+                        
+                        st.subheader("📊 Relatório de Transporte")
+                        df_rep = pd.DataFrame(report)
+                        st.dataframe(df_rep, use_container_width=True, hide_index=True)
+                        st.balloons()
+
+            # --- NEW: TABLE INSPECTOR (FOR DEBUGGING) ---
+            st.divider()
+            with st.expander("🔍 Inspetor de Dados (Debug)", expanded=False):
+                st.markdown("Visualize os dados brutos de qualquer tabela (incluindo colunas escondidas) e exporte para análise.")
+                
+                # Check for mapped data inside the expander context or just use it
+                all_docs_i = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
+                doc_opts_i = {r['Documento']: r['Doc ID'] for _, r in all_docs_i.iterrows()}
+                
+                col_i1, col_i2 = st.columns(2)
+                insp_doc_name = col_i1.selectbox("Documento para Inspecionar", sorted(doc_opts_i.keys()), index=None, key="insp_doc")
+                
+                if insp_doc_name:
+                    insp_doc_id = doc_opts_i[insp_doc_name]
+                    insp_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id)
+                    insp_table_id = col_i2.selectbox("Tabela", sorted([t['id'] for t in insp_tables]), index=None, key="insp_table")
+                    
+                    if insp_table_id:
+                        col_btn1, col_i_rest = st.columns([1, 3])
+                        if col_btn1.button("🔍 Inspecionar Tudo", key="btn_load_raw"):
+                            with st.spinner("Lendo Schema e Sandbox..."):
+                                # 1. Fetch Metadata (Schema)
+                                raw_cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id, insp_table_id)
+                                st.session_state.insp_schema = raw_cols
+                                
+                                # 2. Fetch Records
+                                raw_recs, err_i = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id, insp_table_id)
+                                if err_i:
+                                    st.error(f"Erro nos registros: {err_i}")
+                                    st.session_state.insp_raw_df = None
+                                else:
+                                    data_for_df = []
+                                    for r in raw_recs:
+                                        row = {"_id": r['id']}
+                                        row.update(r['fields'])
+                                        data_for_df.append(row)
+                                    st.session_state.insp_raw_df = pd.DataFrame(data_for_df)
+
+                        # --- DISPLAY SECTION ---
+                        if getattr(st.session_state, 'insp_schema', None) is not None:
+                            st.subheader("📋 Metadados das Colunas (Schema)")
+                            schema_view = []
+                            for c in st.session_state.insp_schema:
+                                f = c['fields']
+                                schema_view.append({
+                                    "ID": c['id'],
+                                    "Label": f.get('label'),
+                                    "Tipo": f.get('type'),
+                                    "Fórmula?": f.get('isFormula'),
+                                    "Fórmula": f.get('formula', ''),
+                                    "Opções (widgetOptions)": f.get('widgetOptions', '')
+                                })
+                            st.dataframe(pd.DataFrame(schema_view), use_container_width=True, hide_index=True)
+                            
+                            # Export Schema as JSON
+                            st.text_area("JSON do Schema (Debug)", value=json.dumps(st.session_state.insp_schema, indent=2, ensure_ascii=False), height=150, key="schema_json_view")
+
+                        if getattr(st.session_state, 'insp_raw_df', None) is not None:
+                            st.subheader("📄 Registros Brutos")
+                            df_insp = st.session_state.insp_raw_df.copy()
+                            df_insp.insert(0, "Selecionar", False)
+                            
+                            edited_insp = st.data_editor(
+                                df_insp,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={"Selecionar": st.column_config.CheckboxColumn("Sel", default=False)},
+                                key="editor_insp_raw"
+                            )
+                            
+                            sel_insp = edited_insp[edited_insp["Selecionar"]]
+                            if not sel_insp.empty:
+                                st.info(f"👉 **{len(sel_insp)} linhas selecionadas.**")
+                                export_json = sel_insp.drop(columns=["Selecionar"]).to_dict(orient='records')
+                                json_str = json.dumps(export_json, indent=2, ensure_ascii=False)
+                                st.text_area("JSON dos Dados (Debug)", value=json_str, height=200, key="data_json_view")
+        else:
+            st.info("Mapeamento necessário.")
 
     with tab6:
         st.header("⚖️ Auditoria de Integridade")
