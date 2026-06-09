@@ -939,8 +939,14 @@ elif main_menu == "🏗️ Engenharia de Dados":
                         col_btn1, col_i_rest = st.columns([1, 3])
                         if col_btn1.button("🔍 Inspecionar Tudo", key="btn_load_raw"):
                             with st.spinner("Lendo Schema e Sandbox..."):
-                                # 1. Fetch Metadata (Schema)
-                                raw_cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id, insp_table_id)
+                                # 1. Fetch Metadata (Schema) including hidden columns
+                                try:
+                                    url_hidden = f"{CURRENT_BASE_URL}/docs/{insp_doc_id}/tables/{insp_table_id}/columns?hidden=true"
+                                    response_hidden = requests.get(url_hidden, headers=get_auth_headers(AUTH_API_KEY))
+                                    raw_cols = response_hidden.json().get('columns', [])
+                                except Exception as e:
+                                    st.error(f"Erro ao ler esquema oculto: {e}")
+                                    raw_cols = []
                                 st.session_state.insp_schema = raw_cols
                                 
                                 # 2. Fetch Records
@@ -962,15 +968,27 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             schema_view = []
                             for c in st.session_state.insp_schema:
                                 f = c['fields']
+                                cid = c['id']
+                                is_hidden = cid.startswith('gristHelper')
+                                display_id = f"👻 {cid}" if is_hidden else cid
                                 schema_view.append({
-                                    "ID": c['id'],
+                                    "ID": display_id,
                                     "Label": f.get('label'),
                                     "Tipo": f.get('type'),
                                     "Fórmula?": f.get('isFormula'),
                                     "Fórmula": f.get('formula', ''),
                                     "Opções (widgetOptions)": f.get('widgetOptions', '')
                                 })
-                            st.dataframe(pd.DataFrame(schema_view), use_container_width=True, hide_index=True)
+                            
+                            df_schema = pd.DataFrame(schema_view)
+                            
+                            def color_hidden(val):
+                                if isinstance(val, str) and val.startswith("👻"):
+                                    return 'color: gray; font-style: italic; background-color: #f0f2f6;'
+                                return ''
+                                
+                            styled_schema = df_schema.style.map(color_hidden, subset=['ID'])
+                            st.dataframe(styled_schema, use_container_width=True, hide_index=True)
                             
                             # Export Schema as JSON
                             st.text_area("JSON do Schema (Debug)", value=json.dumps(st.session_state.insp_schema, indent=2, ensure_ascii=False), height=150, key="schema_json_view")
