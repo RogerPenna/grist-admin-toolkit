@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 # i18n Configuration
 i18n = {
     'pt': {
-        'page_title': 'Gestor PQC - Grist',
-        'sidebar_version': '**Versão: d5de185 (Ação de Usuário)**',
+        'page_title': 'Grist Admin & Data Toolkit',
+        'sidebar_version': '**Version: 1.0**',
         'sidebar_conn_header': '🔌 Conexão',
         'sidebar_server': 'Servidor',
         'sidebar_add_server': '+ Adicionar Novo Servidor...',
@@ -30,7 +30,7 @@ i18n = {
         'menu_access': '🔐 Gestão de Acessos',
         'menu_data': '🏗️ Engenharia de Dados',
         'menu_system': '⚙️ Sistema',
-        'main_title': '<h2 style=\'margin-top: -60px;\'>🛠️ Grist Admin & Data Toolkit</h2>',
+        'main_title': '🛠️ Grist Admin & Data Toolkit',
         
         # Tabs - Access
         'tab_global_view': '👥 Visão Global',
@@ -149,7 +149,7 @@ i18n = {
         'btn_gen_template': '🪄 Gerar Template',
         'btn_scan_limits': '🔍 Escanear Limites',
         'header_help': '📘 Ajuda',
-        'help_markdown': '### 🔐 Gestão de Acessos\n- **Visão Global:** Usuários do Team Site.\n- **Mapeamento:** Auditoria em massa de quem acessa o quê.\n- **Ações Rápidas:** Convites e revogações expressas.\n\n### 🏗️ Engenharia de Dados\n- **Clonador:** Copia esqueletos de tabelas.\n- **Transportador:** Move dados entre documentos.\n- **Auditoria:** Cruza dados de tabelas com acessos reais.\n- **Blueprint:** Infraestrutura como código (JSON).',
+        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Comprehensive User Guide\n\nWelcome to the **Grist Admin & Data Toolkit**. This application is designed for power users and administrators to manage complex Grist organizations, audit security at scale, and perform advanced data engineering tasks.\n\n<a name="sidebar"></a>\n## 🧭 Sidebar & Navigation\nThe sidebar is your command center. \n- **Connection:** You can connect to the standard Grist SaaS (`docs.getgrist.com`) or any self-hosted instance. When adding a custom server, provide the full API URL (e.g., `https://grist.example.com/api`).\n- **API Key:** Requires a valid API Key with **Owner** permissions for the tasks you intend to perform.\n- **Organization:** Switching the organization updates the scope of all tabs. Most tools will only "see" documents within the selected organization.\n- **Full Reload:** Clears the local cache and forces a fresh fetch of organizations and workspaces from the server.\n\n---\n\n# 🔐 Access Management\n\n<a name="global-view"></a>\n### 👥 Global View\nThis tab shows users who are members of the **Team Site** (Organization level).\n- **User List:** Displays the primary email, display name, and their organization-wide role (Viewer, Editor, Admin).\n- **User Details (Deep Audit):** If you have performed a scan in the **Mapping** tab, you can select a user here to see every individual document they have **direct** access to. This is essential for identifying "permission creep" where a user has more access than their global role suggests.\n\n<a name="mapping"></a>\n### 🗺️ Document Mapping\nThe Mapping engine performs a recursive security audit. It iterates through every workspace and every document in the organization, calling the Grist Access API for each.\n- **Scanning:** Since this involves many API calls, it can take a few minutes for large organizations. \n- **Cache:** Results are stored in `mapping_cache.json` to allow you to work across sessions without re-scanning.\n- **Filtering:** Use the filters to find specific users or documents. The "Hide Inherited" option is crucial—it filters out users who have access simply because they are part of a workspace, showing you only those with explicitly granted document-level permissions.\n- **Bulk Operations:** Select multiple users/documents and use the **Operations** panel to:\n    - **Copy Permissions:** Replicate a set of users and their roles from one document to another.\n    - **Update Roles:** Change the access level (e.g., Viewer to Editor) for all selected rows at once.\n\n<a name="quick-actions"></a>\n### ⚡ Quick Actions\nDesigned for speed. If you have a list of 50 emails that need to be added to a specific project document immediately, this is the tool.\n- **Add/Remove:** Paste a list of emails (comma, space, or newline separated). The tool will normalize the emails (lowercase, trim) and apply the requested role.\n\n<a name="acl"></a>\n### 🛡️ Access Rules (ACL)\nGrist\'s internal `_grist_ACLRules` and `_grist_ACLResources` tables are notoriously difficult to read. This tool **denormalizes** them into a human-readable grid.\n- **View:** See which tables and columns are protected and by what formula.\n- **Edit:** For advanced users, you can paste a JSON structure to completely redefine the rules. \n- **Safety:** Every time you apply new rules, the tool automatically saves a timestamped JSON backup in the `/backups` folder. If you break the Sandbox, you can restore from these files.\n\n---\n\n# 🏗️ Data Engineering\n\n<a name="cloner"></a>\n### 🏗️ Table Cloner\nCopies the **Schema** (structure) of a table from a source document to one or more target documents.\n- It copies column IDs, Labels, Types, Formulas, and Widget Options.\n- **Note:** It does **not** move the data (rows), only the structure. Ideal for creating templates.\n\n<a name="transporter"></a>\n### 🚚 Data Transporter\nA sophisticated 3-phase engine to move entire datasets between documents while preserving relationships and formulas.\n- **Phase 1 (Structure):** Creates the tables. To prevent "Sandbox Errors" caused by circular references (e.g., Table A refers to B, and B refers to A), it initially creates all Reference columns as "Any" type.\n- **Phase 2 (Data):** Transfers all records in batches of 500. Reference IDs (Row IDs) are preserved.\n- **Phase 3 (Formulas):** The "Intelligence" phase. It updates the columns to their final types, restores the `visibleCol` mapping (the column shown in the dropdown), and re-activates Python formulas.\n\n<a name="audit"></a>\n### ⚖️ Integrity Audit\nThis is a specialized "Sync" tool. It compares a **Control Table** (a table inside Grist where you manage who *should* have access) with **Actual Grist Permissions**.\n- **Missing (🔴):** Users who are in your table but don\'t actually have access to the document. Use "Grant" to fix this.\n- **Orphan (☢️):** Users who have access to the document but are NOT in your control table. Use "Remove" to revoke unauthorized access.\n\n<a name="blueprint"></a>\n### 🛠️ Blueprint (JSON)\nEnables "Infrastructure as Code" for Grist.\n- **Wipe & Rebuild:** If "Overwrite" is checked, the tool performs a **"Lobotomy"**: it first converts all columns in the document to plain text (removing formulas) to ensure the Grist Sandbox doesn\'t crash during table deletion. It then deletes all tables and rebuilds the document from your JSON blueprint.\n\n<a name="ai"></a>\n### 📥 Populate with AI\nBridge the gap between LLMs and Grist.\n- **Template:** Generates a JSON structure of your table with "..." placeholders.\n- **Workflow:** Paste this template into ChatGPT/Claude with a prompt like "Fill this with 20 realistic rows of project data". Paste the AI response back into the tool to populate your table instantly.\n\n---\n\n# ⚙️ System\n\n<a name="limits"></a>\n### 📊 Limits & Usage\nGrist documents perform best when kept under certain row counts and file sizes.\n- **Scan Limits:** Calculates usage percentages for every document in the organization.\n- **Linhas (%):** Based on the standard 5,000 row "soft limit" for optimal performance.\n- **Dados (%):** Based on a 10MB SQLite file size limit. Helps you identify docs that need optimization or history clearing.',
         'warn_no_org': 'Nenhuma org.',
         'warn_key_needed': 'Chave necessária.',
         'msg_ok': 'OK!',
@@ -158,10 +158,24 @@ i18n = {
         'lbl_ai_template': 'Template IA',
         'lbl_paste_ai': 'Cole Resposta IA',
         'btn_populate': '🚀 Povoar',
+        'doc_source': 'Doc Origem',
+        'doc_to_inspect': 'Documento para Inspecionar',
+        'doc_name': 'Nome Doc',
+        'btn_inspect_all': '🔍 Inspecionar Tudo',
+        'lbl_workspace': 'Workspace',
+        'lbl_table': 'Tabela',
+        'newly_created': '✨ Recém Criado',
+        'lbl_targets': 'Destinos',
+        'lbl_tables_to_transport': 'Tabelas para Transportar',
+        'lbl_col_title': 'Coluna Título',
+        'lbl_col_email': 'Colunas Email',
+        'btn_phase1': '1️⃣ Executar Fase 1 (Estrutura)',
+        'btn_phase2': '2️⃣ Executar Fase 2 (Dados)',
+        'btn_phase3': '3️⃣ Executar Fase 3 (Fórmulas)',
     },
     'en': {
-        'page_title': 'PQC Manager - Grist',
-        'sidebar_version': '**Version: d5de185 (User Action)**',
+        'page_title': 'Grist Admin & Data Toolkit',
+        'sidebar_version': '**Version: 1.0**',
         'sidebar_conn_header': '🔌 Connection',
         'sidebar_server': 'Server',
         'sidebar_add_server': '+ Add New Server...',
@@ -177,7 +191,7 @@ i18n = {
         'menu_access': '🔐 Access Management',
         'menu_data': '🏗️ Data Engineering',
         'menu_system': '⚙️ System',
-        'main_title': '<h2 style=\'margin-top: -60px;\'>🛠️ Grist Admin & Data Toolkit</h2>',
+        'main_title': '🛠️ Grist Admin & Data Toolkit',
         
         # Tabs - Access
         'tab_global_view': '👥 Global View',
@@ -295,8 +309,8 @@ i18n = {
         'header_ai': '📥 Populate with AI',
         'btn_gen_template': '🪄 Generate Template',
         'btn_scan_limits': '🔍 Scan Limits',
-        'header_help': '📘 Help',
-        'help_markdown': '### 🔐 Access Management\n- **Global View:** Team Site users.\n- **Mapping:** Mass audit of who accesses what.\n- **Quick Actions:** Express invitations and revocations.\n\n### 🏗️ Data Engineering\n- **Cloner:** Copies table skeletons.\n- **Transporter:** Moves data between documents.\n- **Audit:** Crosses table data with real accesses.\n- **Blueprint:** Infrastructure as code (JSON).',
+        'header_help': '❓ Help',
+        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Comprehensive User Guide\n\nWelcome to the **Grist Admin & Data Toolkit**. This application is designed for power users and administrators to manage complex Grist organizations, audit security at scale, and perform advanced data engineering tasks.\n\n<a name="sidebar"></a>\n## 🧭 Sidebar & Navigation\nThe sidebar is your command center. \n- **Connection:** You can connect to the standard Grist SaaS (`docs.getgrist.com`) or any self-hosted instance. When adding a custom server, provide the full API URL (e.g., `https://grist.example.com/api`).\n- **API Key:** Requires a valid API Key with **Owner** permissions for the tasks you intend to perform.\n- **Organization:** Switching the organization updates the scope of all tabs. Most tools will only "see" documents within the selected organization.\n- **Full Reload:** Clears the local cache and forces a fresh fetch of organizations and workspaces from the server.\n\n---\n\n# 🔐 Access Management\n\n<a name="global-view"></a>\n### 👥 Global View\nThis tab shows users who are members of the **Team Site** (Organization level).\n- **User List:** Displays the primary email, display name, and their organization-wide role (Viewer, Editor, Admin).\n- **User Details (Deep Audit):** If you have performed a scan in the **Mapping** tab, you can select a user here to see every individual document they have **direct** access to. This is essential for identifying "permission creep" where a user has more access than their global role suggests.\n\n<a name="mapping"></a>\n### 🗺️ Document Mapping\nThe Mapping engine performs a recursive security audit. It iterates through every workspace and every document in the organization, calling the Grist Access API for each.\n- **Scanning:** Since this involves many API calls, it can take a few minutes for large organizations. \n- **Cache:** Results are stored in `mapping_cache.json` to allow you to work across sessions without re-scanning.\n- **Filtering:** Use the filters to find specific users or documents. The "Hide Inherited" option is crucial—it filters out users who have access simply because they are part of a workspace, showing you only those with explicitly granted document-level permissions.\n- **Bulk Operations:** Select multiple users/documents and use the **Operations** panel to:\n    - **Copy Permissions:** Replicate a set of users and their roles from one document to another.\n    - **Update Roles:** Change the access level (e.g., Viewer to Editor) for all selected rows at once.\n\n<a name="quick-actions"></a>\n### ⚡ Quick Actions\nDesigned for speed. If you have a list of 50 emails that need to be added to a specific project document immediately, this is the tool.\n- **Add/Remove:** Paste a list of emails (comma, space, or newline separated). The tool will normalize the emails (lowercase, trim) and apply the requested role.\n\n<a name="acl"></a>\n### 🛡️ Access Rules (ACL)\nGrist\'s internal `_grist_ACLRules` and `_grist_ACLResources` tables are notoriously difficult to read. This tool **denormalizes** them into a human-readable grid.\n- **View:** See which tables and columns are protected and by what formula.\n- **Edit:** For advanced users, you can paste a JSON structure to completely redefine the rules. \n- **Safety:** Every time you apply new rules, the tool automatically saves a timestamped JSON backup in the `/backups` folder. If you break the Sandbox, you can restore from these files.\n\n---\n\n# 🏗️ Data Engineering\n\n<a name="cloner"></a>\n### 🏗️ Table Cloner\nCopies the **Schema** (structure) of a table from a source document to one or more target documents.\n- It copies column IDs, Labels, Types, Formulas, and Widget Options.\n- **Note:** It does **not** move the data (rows), only the structure. Ideal for creating templates.\n\n<a name="transporter"></a>\n### 🚚 Data Transporter\nA sophisticated 3-phase engine to move entire datasets between documents while preserving relationships and formulas.\n- **Phase 1 (Structure):** Creates the tables. To prevent "Sandbox Errors" caused by circular references (e.g., Table A refers to B, and B refers to A), it initially creates all Reference columns as "Any" type.\n- **Phase 2 (Data):** Transfers all records in batches of 500. Reference IDs (Row IDs) are preserved.\n- **Phase 3 (Formulas):** The "Intelligence" phase. It updates the columns to their final types, restores the `visibleCol` mapping (the column shown in the dropdown), and re-activates Python formulas.\n\n<a name="audit"></a>\n### ⚖️ Integrity Audit\nThis is a specialized "Sync" tool. It compares a **Control Table** (a table inside Grist where you manage who *should* have access) with **Actual Grist Permissions**.\n- **Missing (🔴):** Users who are in your table but don\'t actually have access to the document. Use "Grant" to fix this.\n- **Orphan (☢️):** Users who have access to the document but are NOT in your control table. Use "Remove" to revoke unauthorized access.\n\n<a name="blueprint"></a>\n### 🛠️ Blueprint (JSON)\nEnables "Infrastructure as Code" for Grist.\n- **Wipe & Rebuild:** If "Overwrite" is checked, the tool performs a **"Lobotomy"**: it first converts all columns in the document to plain text (removing formulas) to ensure the Grist Sandbox doesn\'t crash during table deletion. It then deletes all tables and rebuilds the document from your JSON blueprint.\n\n<a name="ai"></a>\n### 📥 Populate with AI\nBridge the gap between LLMs and Grist.\n- **Template:** Generates a JSON structure of your table with "..." placeholders.\n- **Workflow:** Paste this template into ChatGPT/Claude with a prompt like "Fill this with 20 realistic rows of project data". Paste the AI response back into the tool to populate your table instantly.\n\n---\n\n# ⚙️ System\n\n<a name="limits"></a>\n### 📊 Limits & Usage\nGrist documents perform best when kept under certain row counts and file sizes.\n- **Scan Limits:** Calculates usage percentages for every document in the organization.\n- **Linhas (%):** Based on the standard 5,000 row "soft limit" for optimal performance.\n- **Dados (%):** Based on a 10MB SQLite file size limit. Helps you identify docs that need optimization or history clearing.',
         'warn_no_org': 'No org.',
         'warn_key_needed': 'Key required.',
         'msg_ok': 'OK!',
@@ -305,18 +319,32 @@ i18n = {
         'lbl_ai_template': 'AI Template',
         'lbl_paste_ai': 'Paste AI Response',
         'btn_populate': '🚀 Populate',
+        'doc_source': 'Source Doc',
+        'doc_to_inspect': 'Document to Inspect',
+        'doc_name': 'Doc Name',
+        'btn_inspect_all': '🔍 Inspect All',
+        'lbl_workspace': 'Workspace',
+        'lbl_table': 'Table',
+        'newly_created': '✨ Newly Created',
+        'lbl_targets': 'Targets',
+        'lbl_tables_to_transport': 'Tables to Transport',
+        'lbl_col_title': 'Title Column',
+        'lbl_col_email': 'Email Columns',
+        'btn_phase1': '1️⃣ Execute Phase 1 (Structure)',
+        'btn_phase2': '2️⃣ Execute Phase 2 (Data)',
+        'btn_phase3': '3️⃣ Execute Phase 3 (Formulas)',
     }
 }
 
 # Page Configuration
 st.set_page_config(
-    page_title="Gestor PQC - Grist",
-    page_icon="📊",
+    page_title="Grist Admin & Data Toolkit",
+    page_icon="🛠️",
     layout="wide"
 )
 
 if 'lang' not in st.session_state:
-    st.session_state.lang = 'pt'
+    st.session_state.lang = 'en'
 
 # 1. Configuration & Setup
 load_dotenv()
@@ -731,14 +759,50 @@ def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
     return True
 
 # 3. Main UI Layout
-st.markdown(i18n[st.session_state.lang]['main_title'], unsafe_allow_html=True)
+# --- Header Row (Title, Language, Global Help) ---
+h_col1, h_col2, h_col3 = st.columns([3, 1, 0.2])
 
-# --- Sidebar: Language Toggle ---
-lang_options = {'pt': '🇵🇹 Português', 'en': '🇺🇸 English'}
-selected_lang = st.sidebar.radio("Language / Idioma", options=list(lang_options.keys()), format_func=lambda x: lang_options[x], index=0 if st.session_state.lang == 'pt' else 1)
-if selected_lang != st.session_state.lang:
-    st.session_state.lang = selected_lang
-    st.rerun()
+with h_col1:
+    st.subheader(i18n[st.session_state.lang]['main_title'])
+
+with h_col2:
+    lang_options = {'en': '🇺🇸 English', 'pt': '🇧🇷 Português'}
+    sel_lang = st.selectbox(
+        "Language", 
+        options=list(lang_options.keys()), 
+        format_func=lambda x: lang_options[x], 
+        index=0 if st.session_state.lang == 'en' else 1, 
+        key="main_lang_selector",
+        label_visibility="collapsed"
+    )
+    if sel_lang != st.session_state.lang:
+        st.session_state.lang = sel_lang
+        st.rerun()
+
+with h_col3:
+    help_url = "?nav=help"
+    st.markdown(
+        f'<a href="{help_url}" target="_blank" style="text-decoration: none; font-size: 1.5rem;" title="View Documentation">❓</a>',
+        unsafe_allow_html=True
+    )
+
+st.divider()
+
+# --- Deep Linking & Tab Help Icons ---
+if 'nav' in st.query_params:
+    st.session_state.main_nav_menu_key = st.query_params['nav']
+
+def render_help_icon(anchor):
+    """Renders a small help icon that links to the documentation section."""
+    help_url = f"?nav=help#{anchor}"
+    st.markdown(
+        f"""
+        <div style="text-align: right; margin-top: -50px; margin-bottom: 10px;">
+            <a href="{help_url}" target="_blank" style="text-decoration: none; font-size: 1.5rem;" title="Help for this section">❓</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # --- Sidebar: Connection ---
 st.sidebar.markdown(i18n[st.session_state.lang]['sidebar_version'])
@@ -779,7 +843,7 @@ org_map = {f"{org['name']} ({org['id']})": org['id'] for org in orgs}
 org_domain_map = {org['id']: org.get('domain') for org in orgs}
 keys_list = list(org_map.keys())
 default_idx = next((i for i, k in enumerate(keys_list) if "Qualidade Contábil" in k), 0)
-selected_org_key = st.sidebar.selectbox("Organização", keys_list, index=default_idx)
+selected_org_key = st.sidebar.selectbox(i18n[st.session_state.lang]['sidebar_org'], keys_list, index=default_idx)
 selected_org_id, selected_org_name = org_map[selected_org_key], selected_org_key
 selected_domain = org_domain_map.get(selected_org_id)
 
@@ -790,14 +854,29 @@ if selected_domain and "personal" not in selected_org_name.lower() and is_grist_
 else: CURRENT_BASE_URL = AUTH_BASE_URL
 
 st.sidebar.caption(f"📍 Base URL: {CURRENT_BASE_URL}")
-if st.sidebar.button("🔄 Recarga Geral"): st.cache_data.clear(); st.session_state.mapped_data = None; st.rerun()
+if st.sidebar.button(i18n[st.session_state.lang]['sidebar_reload_btn']): st.cache_data.clear(); st.session_state.mapped_data = None; st.rerun()
 
 # --- Sidebar: Menu ---
 st.sidebar.divider()
-st.sidebar.header("🧭 Menu Principal")
-main_menu = st.sidebar.selectbox("Ir para:", ["🔐 Gestão de Acessos", "🏗️ Engenharia de Dados", "⚙️ Sistema"], key="main_nav_menu")
+st.sidebar.header(i18n[st.session_state.lang]['sidebar_main_menu_header'])
+render_help_icon("sidebar")
 
-if main_menu == i18n[st.session_state.lang]['menu_access']:
+# Navigation mapping to keep keys stable
+menu_map = {
+    'access': i18n[st.session_state.lang]['menu_access'],
+    'data': i18n[st.session_state.lang]['menu_data'],
+    'limits': i18n[st.session_state.lang]['tab_limits'],
+    'help': i18n[st.session_state.lang]['tab_help']
+}
+main_menu_key = st.sidebar.selectbox(
+    i18n[st.session_state.lang]['sidebar_go_to'], 
+    options=list(menu_map.keys()), 
+    format_func=lambda x: menu_map[x],
+    key="main_nav_menu_key"
+)
+
+if main_menu_key == 'access':
+    # ... rest of access code ...
     tab1, tab2, tab3, tab4 = st.tabs([
         i18n[st.session_state.lang]['tab_global_view'],
         i18n[st.session_state.lang]['tab_mapping'],
@@ -807,6 +886,7 @@ if main_menu == i18n[st.session_state.lang]['menu_access']:
     
     with tab1:
         st.header(i18n[st.session_state.lang]['header_users'].format(org=selected_org_name))
+        render_help_icon("global-view")
         c1, c2 = st.columns(2)
         f_name = c1.text_input(i18n[st.session_state.lang]['filter_name'], key="s_g_name")
         f_email = c2.text_input(i18n[st.session_state.lang]['filter_email'], key="s_g_email")
@@ -820,10 +900,10 @@ if main_menu == i18n[st.session_state.lang]['menu_access']:
             if f_email: df_display = df_display[df_display['Email'].str.contains(f_email, case=False, na=False)]
             st.dataframe(df_display, use_container_width=True, hide_index=True)
             st.divider()
-            st.subheader("🕵️ Detalhes por Usuário")
+            st.subheader(i18n[st.session_state.lang]['user_details'])
             if st.session_state.mapped_data is not None:
                 valid_emails = sorted([e for e in df_display['Email'].unique() if e and e != '-'])
-                sel_u = st.selectbox("Selecione Usuário", valid_emails, key="sel_u_det")
+                sel_u = st.selectbox(i18n[st.session_state.lang]['select_user'], valid_emails, key="sel_u_det")
                 if sel_u:
                     user_docs = st.session_state.mapped_data[st.session_state.mapped_data['Email'] == sel_u]
                     if 'Nível de Acesso' in user_docs.columns:
@@ -831,11 +911,12 @@ if main_menu == i18n[st.session_state.lang]['menu_access']:
                     if not user_docs.empty:
                         d_cols = [c for c in ['Documento', 'Workspace', 'Nível de Acesso'] if c in user_docs.columns]
                         st.dataframe(user_docs[d_cols], use_container_width=True, hide_index=True)
-                    else: st.warning("Sem acessos diretos.")
-            else: st.info("Faça o mapeamento na aba 2.")
+                    else: st.warning(i18n[st.session_state.lang]['no_direct_access'])
+            else: st.info(i18n[st.session_state.lang]['do_mapping_tab2'])
 
     with tab2:
         st.header(i18n[st.session_state.lang]['header_doc_mapping'])
+        render_help_icon("mapping")
         MAPPING_FILE = "mapping_cache.json"
         if st.session_state.mapped_data is None and os.path.exists(MAPPING_FILE):
             try:
@@ -915,59 +996,61 @@ if main_menu == i18n[st.session_state.lang]['menu_access']:
                     st.toast(i18n[st.session_state.lang]['toast_updated']); st.cache_data.clear(); time.sleep(1); st.rerun()
 
     with tab3:
-        st.header("⚡ Ações Rápidas")
+        st.header(i18n[st.session_state.lang]['header_quick_actions'])
+        render_help_icon("quick-actions")
         if st.session_state.mapped_data is not None:
             all_q = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_q = {r['Documento']: r['Doc ID'] for _, r in all_q.iterrows()}
-            target_q = st.selectbox("Selecionar Doc", sorted(doc_opts_q.keys()), index=None)
+            target_q = st.selectbox(i18n[st.session_state.lang]['select_doc'], sorted(doc_opts_q.keys()), index=None)
             if target_q:
                 tid = doc_opts_q[target_q]
                 c1, c2 = st.columns(2)
-                ems = c1.text_area("Emails (Adicionar)")
-                rl = c1.selectbox("Nível", ["viewers", "editors", "owners"], key="q_rl")
-                if c1.button("Adicionar"):
+                ems = c1.text_area(i18n[st.session_state.lang]['emails_add'])
+                rl = c1.selectbox(i18n[st.session_state.lang]['level'], ["viewers", "editors", "owners"], key="q_rl")
+                if c1.button(i18n[st.session_state.lang]['btn_add']):
                     list_e = [e.strip().lower() for e in re.split(r'[,\s\n]+', ems) if e.strip()]
                     for e in list_e: update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, e, rl)
-                    st.toast("Adicionados!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                ems_r = c2.text_area("Emails (Remover)")
-                if c2.button("Remover", type="primary"):
+                    st.toast(i18n[st.session_state.lang]['toast_added']); st.cache_data.clear(); time.sleep(1); st.rerun()
+                ems_r = c2.text_area(i18n[st.session_state.lang]['emails_remove'])
+                if c2.button(i18n[st.session_state.lang]['btn_remove'], type="primary"):
                     list_er = [e.strip().lower() for e in re.split(r'[,\s\n]+', ems_r) if e.strip()]
                     for e in list_er: update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, e, None)
-                    st.toast("Removidos!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-        else: st.info("Mapeamento necessário.")
+                    st.toast(i18n[st.session_state.lang]['toast_removed']); st.cache_data.clear(); time.sleep(1); st.rerun()
+        else: st.info(i18n[st.session_state.lang]['mapping_needed'])
 
     with tab4:
-        st.header("🛡️ Regras de Acesso (ACL)")
+        st.header(i18n[st.session_state.lang]['header_acl'])
+        render_help_icon("acl")
         if st.session_state.mapped_data is not None:
             all_r = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_r = {r['Documento']: r['Doc ID'] for _, r in all_r.iterrows()}
         else:
             wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
             doc_opts_r = {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
-        target_r = st.selectbox("Doc para Auditoria", sorted(doc_opts_r.keys()), index=None)
+        target_r = st.selectbox(i18n[st.session_state.lang]["doc_audit"], sorted(doc_opts_r.keys()), index=None)
         if target_r:
             tid_r = doc_opts_r[target_r]
-            st1, st2 = st.tabs(["👁️ Visualizar", "✍️ Editar"])
+            st1, st2 = st.tabs([i18n[st.session_state.lang]["tab_view"], i18n[st.session_state.lang]["tab_edit"]])
             with st1:
-                if st.button("🔍 Carregar"):
+                if st.button(i18n[st.session_state.lang]["btn_load"]):
                     rules = get_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, tid_r)
                     st.session_state.acl_data = rules
                 if getattr(st.session_state, 'acl_data', None):
                     df_r = pd.DataFrame(st.session_state.acl_data)
                     st.dataframe(df_r, use_container_width=True, hide_index=True)
             with st2:
-                ed_json = st.text_area("Novo JSON de Regras")
-                if st.button("📤 Aplicar"):
+                ed_json = st.text_area(i18n[st.session_state.lang]["new_json_rules"])
+                if st.button(i18n[st.session_state.lang]["btn_apply"]):
                     try:
                         new_r = json.loads(ed_json)
                         cur = get_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, tid_r)
                         ok_b, pb = backup_rules_locally(target_r, cur)
                         if ok_b:
                             apply_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, tid_r, new_r)
-                            st.success("Aplicado!"); st.cache_data.clear()
+                            st.success(i18n[st.session_state.lang]["toast_applied"]); st.cache_data.clear()
                     except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
-elif main_menu == i18n[st.session_state.lang]['menu_data']:
+elif main_menu_key == 'data':
     tab7, tab_trans, tab6, tab8, tab10 = st.tabs([
         i18n[st.session_state.lang]['tab_cloner'],
         i18n[st.session_state.lang]['tab_transporter'],
@@ -978,6 +1061,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
     
     with tab7:
         st.header(i18n[st.session_state.lang]['tab_cloner'])
+        render_help_icon("cloner")
         if st.session_state.mapped_data is not None:
             all_c = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_c = {r['Documento']: r['Doc ID'] for _, r in all_c.iterrows()}
@@ -985,18 +1069,18 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
             wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
             doc_opts_c = {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
         c1, c2 = st.columns(2)
-        src_n = c1.selectbox("Doc Origem", sorted(doc_opts_c.keys()), index=None, key="c_src")
+        src_n = c1.selectbox(i18n[st.session_state.lang]['doc_source'], sorted(doc_opts_c.keys()), index=None, key="c_src")
         if src_n:
             sid = doc_opts_c[src_n]
             tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, sid)
-            tbl_id = c2.selectbox("Tabela Origem", sorted([t['id'] for t in tables]), index=None)
+            tbl_id = c2.selectbox(i18n[st.session_state.lang]['lbl_table'], sorted([t['id'] for t in tables]), index=None)
             if tbl_id:
                 cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, sid, tbl_id)
                 clean = []
                 for c in cols:
                     f = c['fields']
                     clean.append({"id": c['id'], "fields": {"label": f.get("label"), "type": f.get("type"), "isFormula": f.get("isFormula", False), "formula": f.get("formula", ""), "widgetOptions": f.get("widgetOptions", "")}})
-                targets = st.multiselect("Destinos", sorted(doc_opts_c.keys()))
+                targets = st.multiselect(i18n[st.session_state.lang]['lbl_targets'], sorted(doc_opts_c.keys()))
                 if st.button(i18n[st.session_state.lang]["btn_clone"]):
                     for tn in targets:
                         tid = doc_opts_c[tn]
@@ -1006,16 +1090,17 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
 
     with tab_trans:
         st.header(i18n[st.session_state.lang]["header_transporter"])
+        render_help_icon("transporter")
         if st.session_state.mapped_data is not None:
             m_data = st.session_state.mapped_data
             all_t = m_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_t = {r['Documento']: r['Doc ID'] for _, r in all_t.iterrows()}
             c1, c2 = st.columns(2)
-            src_n = c1.selectbox("Doc Origem", sorted(doc_opts_t.keys()), index=None, key="t_src")
+            src_n = c1.selectbox(i18n[st.session_state.lang]['doc_source'], sorted(doc_opts_t.keys()), index=None, key="t_src")
             if src_n:
                 sid = doc_opts_t[src_n]
                 tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, sid)
-                sel_tbls = c2.multiselect("Tabelas para Transportar", sorted([t['id'] for t in tables if not t['id'].startswith('_grist')]))
+                sel_tbls = c2.multiselect(i18n[st.session_state.lang]['lbl_tables_to_transport'], sorted([t['id'] for t in tables if not t['id'].startswith('_grist')]))
                 dest_n = st.selectbox(i18n[st.session_state.lang]["t_dest_doc"], sorted(doc_opts_t.keys()), index=None, key="t_dest")
                 
                 if sel_tbls and dest_n:
@@ -1035,7 +1120,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                     c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
                     
                     if st.session_state.t_step == 0:
-                        if c_btn1.button("1️⃣ Executar Fase 1 (Estrutura)", type="primary"):
+                        if c_btn1.button(i18n[st.session_state.lang]['btn_phase1'], type="primary"):
                             st.session_state.t_logs = ["--- INICIANDO FASE 1 (ESTRUTURA INTELIGENTE) ---"]
                             
                             # Topological sort to handle references (Parents first)
@@ -1178,7 +1263,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                             st.rerun()
 
                     elif st.session_state.t_step == 1:
-                        if c_btn2.button("2️⃣ Executar Fase 2 (Dados)", type="primary"):
+                        if c_btn2.button(i18n[st.session_state.lang]['btn_phase2'], type="primary"):
                             st.session_state.t_logs.append("\n--- INICIANDO FASE 2 (INSERÇÃO DE DADOS) ---")
                             for task in st.session_state.t_tasks:
                                 tid = task["id"]
@@ -1214,7 +1299,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                             st.rerun()
 
                     elif st.session_state.t_step == 2:
-                        if c_btn3.button("3️⃣ Executar Fase 3 (Fórmulas)", type="primary"):
+                        if c_btn3.button(i18n[st.session_state.lang]['btn_phase3'], type="primary"):
                             st.session_state.t_logs.append("\n--- INICIANDO FASE 3 (ATIVAÇÃO DE FÓRMULAS E MAPPING) ---")
                             dest_col_map = {}
                             
@@ -1311,16 +1396,16 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                 doc_opts_i = {r['Documento']: r['Doc ID'] for _, r in all_docs_i.iterrows()}
                 
                 col_i1, col_i2 = st.columns(2)
-                insp_doc_name = col_i1.selectbox("Documento para Inspecionar", sorted(doc_opts_i.keys()), index=None, key="insp_doc")
+                insp_doc_name = col_i1.selectbox(i18n[st.session_state.lang]['doc_to_inspect'], sorted(doc_opts_i.keys()), index=None, key="insp_doc")
                 
                 if insp_doc_name:
                     insp_doc_id = doc_opts_i[insp_doc_name]
                     insp_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id)
-                    insp_table_id = col_i2.selectbox("Tabela", sorted([t['id'] for t in insp_tables]), index=None, key="insp_table")
+                    insp_table_id = col_i2.selectbox(i18n[st.session_state.lang]['lbl_table'], sorted([t['id'] for t in insp_tables]), index=None, key="insp_table")
                     
                     if insp_table_id:
                         col_btn1, col_i_rest = st.columns([1, 3])
-                        if col_btn1.button("🔍 Inspecionar Tudo", key="btn_load_raw"):
+                        if col_btn1.button(i18n[st.session_state.lang]['btn_inspect_all'], key="btn_load_raw"):
                             with st.spinner("Lendo Schema e Sandbox..."):
                                 # 1. Fetch Metadata (Schema) including hidden columns
                                 try:
@@ -1402,6 +1487,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
 
     with tab6:
         st.header(i18n[st.session_state.lang]["header_audit"])
+        render_help_icon("audit")
         configs = load_audit_configs()
         sel_c = st.selectbox(i18n[st.session_state.lang]["load_config"], [i18n[st.session_state.lang]["new_config"]] + list(configs.keys()))
         st.divider()
@@ -1423,8 +1509,8 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                     def_ti = next((i for i, l in enumerate(sorted_l) if c_opts.get(configs.get(sel_c,{}).get('title_col')) == l), None)
                     def_em = [c_opts[eid] for eid in configs.get(sel_c,{}).get('email_cols', []) if eid in c_opts]
                     c1, c2 = st.columns(2)
-                    s_title = c1.selectbox("Coluna Título", sorted_l, index=def_ti)
-                    s_emails = c2.multiselect("Colunas Email", sorted_l, default=def_em)
+                    s_title = c1.selectbox(i18n[st.session_state.lang]['lbl_col_title'], sorted_l, index=def_ti)
+                    s_emails = c2.multiselect(i18n[st.session_state.lang]['lbl_col_email'], sorted_l, default=def_em)
                     if st.button(i18n[st.session_state.lang]["btn_audit"]):
                         with st.spinner("Cruzando..."):
                             tid_col = next(k for k,v in c_opts.items() if v == s_title)
@@ -1470,12 +1556,13 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
 
     with tab8:
         st.header(i18n[st.session_state.lang]["header_blueprint"])
+        render_help_icon("blueprint")
         st.subheader(i18n[st.session_state.lang]["new_doc_section"])
         c1, c2 = st.columns([2, 1])
-        n_doc = c1.text_input("Nome Doc")
+        n_doc = c1.text_input(i18n[st.session_state.lang]['doc_name'])
         wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         ws_opts = {ws['name']: ws['id'] for ws in wss}
-        s_ws = c2.selectbox("Workspace", sorted(ws_opts.keys()))
+        s_ws = c2.selectbox(i18n[st.session_state.lang]['lbl_workspace'], sorted(ws_opts.keys()))
         if st.button(i18n[st.session_state.lang]["btn_create"]):
             if n_doc: ok, res = create_document(CURRENT_BASE_URL, AUTH_API_KEY, ws_opts[s_ws], n_doc); st.success(i18n[st.session_state.lang]["success_created"].format(res=res)); st.session_state.last_id = res; st.cache_data.clear()
         st.divider(); st.subheader(i18n[st.session_state.lang]["apply_structure_section"])
@@ -1483,7 +1570,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
         wss_live = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         opts_b = {d['name']: d['id'] for ws in wss_live for d in ws.get('docs', [])}
         
-        if 'last_id' in st.session_state: opts_b["✨ Recém Criado"] = st.session_state.last_id
+        if 'last_id' in st.session_state: opts_b[i18n[st.session_state.lang]['newly_created']] = st.session_state.last_id
         target_b = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(opts_b.keys(), reverse=True))
         ovw = st.checkbox(i18n[st.session_state.lang]["overwrite_warning"])
         js_raw = st.text_area(i18n[st.session_state.lang]["blueprint_json"])
@@ -1551,6 +1638,7 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
 
     with tab10:
         st.header(i18n[st.session_state.lang]["header_ai"])
+        render_help_icon("ai")
         opts_ia = {r['Documento']: r['Doc ID'] for _, r in st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates().iterrows()} if st.session_state.mapped_data is not None else {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
         sel_ia = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(opts_ia.keys()), index=None, key="ia_doc")
         if sel_ia:
@@ -1572,26 +1660,25 @@ elif main_menu == i18n[st.session_state.lang]['menu_data']:
                         st.success(i18n[st.session_state.lang]["msg_ok"]); st.balloons()
                     except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
-elif main_menu == i18n[st.session_state.lang]['menu_system']:
-    t_lim, t_help = st.tabs([i18n[st.session_state.lang]['tab_limits'], i18n[st.session_state.lang]['tab_help']])
-    with t_lim:
-        st.header(i18n[st.session_state.lang]['tab_limits'])
-        if st.session_state.mapped_data is not None:
-            docs = st.session_state.mapped_data[['Documento', 'Doc ID', 'Workspace']].drop_duplicates()
-        else:
-            wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
-            docs = pd.DataFrame([{'Documento': d['name'], 'Doc ID': d['id'], 'Workspace': ws['name']} for ws in wss for d in ws.get('docs', [])])
-        if st.button(i18n[st.session_state.lang]["btn_scan_limits"]):
-            res = []
-            for _, r in docs.iterrows():
-                size = get_real_data_size(CURRENT_BASE_URL, AUTH_API_KEY, r['Doc ID'])
-                usage, _ = get_doc_usage(CURRENT_BASE_URL, AUTH_API_KEY, r['Doc ID'])
-                rows = usage.get('rowCount', {}).get('total', 0) if usage else 0
-                res.append({'Documento': r['Documento'], 'Linhas (%)': round(rows/5000*100, 1), 'Dados (%)': round(size/(10*1024*1024)*100, 1), 'Total Linhas': rows})
-            st.session_state.usage_df = pd.DataFrame(res)
-        if getattr(st.session_state, 'usage_df', None) is not None:
-            st.dataframe(st.session_state.usage_df, use_container_width=True, hide_index=True, column_config={"Linhas (%)": st.column_config.ProgressColumn(min_value=0, max_value=100), "Dados (%)": st.column_config.ProgressColumn(min_value=0, max_value=100)})
-            
-    with t_help:
-        st.header(i18n[st.session_state.lang]["header_help"])
-        st.markdown(i18n[st.session_state.lang]["help_markdown"])
+elif main_menu_key == 'limits':
+    st.header(i18n[st.session_state.lang]['tab_limits'])
+    render_help_icon("limits")
+    if st.session_state.mapped_data is not None:
+        docs = st.session_state.mapped_data[['Documento', 'Doc ID', 'Workspace']].drop_duplicates()
+    else:
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
+        docs = pd.DataFrame([{'Documento': d['name'], 'Doc ID': d['id'], 'Workspace': ws['name']} for ws in wss for d in ws.get('docs', [])])
+    if st.button(i18n[st.session_state.lang]["btn_scan_limits"]):
+        res = []
+        for _, r in docs.iterrows():
+            size = get_real_data_size(CURRENT_BASE_URL, AUTH_API_KEY, r['Doc ID'])
+            usage, _ = get_doc_usage(CURRENT_BASE_URL, AUTH_API_KEY, r['Doc ID'])
+            rows = usage.get('rowCount', {}).get('total', 0) if usage else 0
+            res.append({'Documento': r['Documento'], 'Linhas (%)': round(rows/5000*100, 1), 'Dados (%)': round(size/(10*1024*1024)*100, 1), 'Total Linhas': rows})
+        st.session_state.usage_df = pd.DataFrame(res)
+    if getattr(st.session_state, 'usage_df', None) is not None:
+        st.dataframe(st.session_state.usage_df, use_container_width=True, hide_index=True, column_config={"Linhas (%)": st.column_config.ProgressColumn(min_value=0, max_value=100), "Dados (%)": st.column_config.ProgressColumn(min_value=0, max_value=100)})
+
+elif main_menu_key == 'help':
+    st.header(i18n[st.session_state.lang]["header_help"])
+    st.markdown(i18n[st.session_state.lang]["help_markdown"], unsafe_allow_html=True)

@@ -6,3 +6,8 @@ __pycache__/
 backups/
 mapping_cache.json
 saved_servers.json
+streamlit_error.log
+streamlit_error2.log
+DIST_GristAdminToolkit/
+GristAdminToolkit_v1.0.zip
+

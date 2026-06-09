@@ -1,31 +1,53 @@
-# Gestor de Acessos Grist PQC-RS
+# Grist Admin & Data Toolkit
 
-Este aplicativo Streamlit foi desenvolvido para gerenciar permissões de usuários no Grist para o **Prêmio da Qualidade Contábil (PQC-RS)**.
+A comprehensive Streamlit application designed for Grist power users and administrators to manage organizations, audit security, and perform advanced data engineering.
 
-## Funcionalidades
+## Key Features
 
-- **Visão Global:** Lista todos os usuários do Team Site e seus níveis de acesso organizacional.
-- **Mapeamento de Documentos:** Varredura completa de Workspaces e Documentos para identificar acessos individuais.
-- **Operações em Massa:**
-  - Copiar usuários entre documentos.
-  - Mover (cortar) usuários.
-  - Alterar nível de acesso (Viewer, Editor, Owner) em lote.
-  - Remover acessos em massa.
-  - Substituição rápida de usuários.
-- **Auto-Refresh:** Atualização automática da tabela após operações bem-sucedidas.
+### 🔐 Access Management
+- **Global View:** List all Team Site users and their organizational access levels.
+- **Document Mapping:** Recursive scan of all workspaces and documents to identify individual permissions.
+- **Bulk Operations:** Copy, update, or revoke access for multiple users across multiple documents at once.
+- **Quick Actions:** Rapidly invite or remove batches of users via email lists.
+- **Access Rules (ACL):** Human-readable denormalization of complex Grist ACL tables with JSON backup/restore.
 
-## Configuração
+### 🏗️ Data Engineering
+- **Table Cloner:** Copy table schemas (structure) between documents without moving data.
+- **Data Transporter:** Move entire datasets between documents while maintaining relationship integrity and formulas (3-phase strategy).
+- **Integrity Audit:** Sync Grist permissions with a "Control Table" to identify and fix missing or orphan accesses.
+- **Blueprint (JSON):** Infrastructure as Code for Grist—create or completely rebuild documents from JSON schemas.
+- **Populate with AI:** Integration with LLMs to generate realistic test data based on your table structures.
 
-1. Crie um arquivo `.env` na raiz do projeto.
-2. Adicione sua chave de API do Grist:
+### ⚙️ System
+- **Limits & Usage:** Monitor document health, row counts, and SQLite file sizes against Grist performance limits.
+- **Contextual Help:** Integrated documentation with deep links for every feature.
+
+## Setup & Execution
+
+1. **Prerequisites:**
+   - Python 3.8+
+   - Grist API Key (Owner permissions recommended)
+
+2. **Environment:**
+   - Create a `.env` file or provide your API Key directly in the app sidebar.
    ```env
-   GRIST_API_KEY=sua_chave_aqui
+   GRIST_API_KEY=your_api_key_here
    ```
-3. Instale as dependências:
+
+3. **Installation:**
    ```bash
    pip install -r requirements.txt
    ```
-4. Execute o app:
-   ```bash
-   streamlit run app_pqc.py
-   ```
+
+4. **Run the App:**
+   - Use the provided batch script (Windows):
+     ```bash
+     run_toolkit.bat
+     ```
+   - Or run directly via Streamlit:
+     ```bash
+     streamlit run grist_admin_toolkit.py
+     ```
+
+## Security Note
+This application communicates directly with your Grist server via the official REST API. It does not store your data on external servers. Local caching is used for mapping results to improve performance.
