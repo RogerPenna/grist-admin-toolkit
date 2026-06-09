@@ -1122,6 +1122,21 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             ex = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, tid)
                             tables_to_delete = [t['id'] for t in ex if not t['id'].startswith('_grist')]
                             if tables_to_delete:
+                                # Pre-pass: Lobotomy (Convert all columns to empty Text to kill formulas before deleting tables)
+                                st.info("Desativando fórmulas para evitar erros de dependência no servidor...")
+                                for del_tid in tables_to_delete:
+                                    try:
+                                        cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, tid, del_tid)
+                                        lobotomy_payload = []
+                                        for c in cols:
+                                            # We just change the type and strip formulas so the Sandbox doesn't crash on deletion
+                                            if c['id'] != 'manualSort':
+                                                lobotomy_payload.append({"id": c['id'], "fields": {"type": "Text", "isFormula": False, "formula": ""}})
+                                        if lobotomy_payload:
+                                            update_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, del_tid, lobotomy_payload)
+                                    except:
+                                        pass # If we can't lobotomize, we just ignore and try the deletion anyway
+                                
                                 ok_del, m_del = delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, tid, tables_to_delete)
                                 if not ok_del:
                                     st.error(f"Erro ao limpar documento: {m_del}")
