@@ -292,14 +292,26 @@ def add_columns(base_url, api_key, doc_id, table_id, columns_payload):
         return False, str(e)
 
 def update_columns(base_url, api_key, doc_id, table_id, columns_payload):
-    """Updates existing columns metadata (type, formula, etc) via PATCH."""
+    """Updates existing columns metadata via the low-level /apply endpoint using ModifyColumn actions."""
     base_url = base_url.strip().rstrip("/")
     try:
-        url = f"{base_url}/docs/{doc_id}/tables/{table_id}/columns"
-        payload = {"columns": columns_payload}
-        response = requests.patch(url, headers=get_auth_headers(api_key), json=payload)
+        url = f"{base_url}/docs/{doc_id}/apply"
+        
+        # Convert standard column payload into a list of ModifyColumn actions
+        # Payload format: {"id": "ColName", "fields": {"type": "...", ...}}
+        actions = []
+        for col in columns_payload:
+            col_id = col['id']
+            col_fields = col.get('fields', {})
+            # Remove keys that might cause issues if they are null
+            clean_fields = {k: v for k, v in col_fields.items() if v is not None}
+            actions.append(["ModifyColumn", table_id, col_id, clean_fields])
+            
+        payload = actions # The /apply endpoint expects just the array of arrays
+        
+        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
-            return True, "Colunas atualizadas."
+            return True, "Ações aplicadas com sucesso."
         return False, f"Erro {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
