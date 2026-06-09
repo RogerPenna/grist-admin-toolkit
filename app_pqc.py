@@ -308,15 +308,15 @@ i18n = {
     }
 }
 
-if 'lang' not in st.session_state:
-    st.session_state.lang = 'pt'
-
 # Page Configuration
 st.set_page_config(
     page_title="Gestor PQC - Grist",
     page_icon="📊",
     layout="wide"
 )
+
+if 'lang' not in st.session_state:
+    st.session_state.lang = 'pt'
 
 # 1. Configuration & Setup
 load_dotenv()
