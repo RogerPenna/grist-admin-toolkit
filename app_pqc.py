@@ -702,118 +702,116 @@ elif main_menu == "🏗️ Engenharia de Dados":
                     
                     c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
                     
-                    # Phase 1 is always available if step is 0 or if we want to restart structure
-                    if c_btn1.button("1️⃣ Executar Fase 1", type="primary" if st.session_state.t_step == 0 else "secondary"):
-                        st.session_state.t_step = 0 # Force back to start of sequence
-                        st.session_state.t_logs = ["--- INICIANDO FASE 1 (ESTRUTURA INTELIGENTE) ---"]
-                        
-                        # Topological sort to handle references (Parents first)
-                        graph = {t: [] for t in sel_tbls}
-                        schemas = {}
-                        for t in sel_tbls:
-                            cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, sid, t)
-                            schemas[t] = cols
-                            for c in cols:
-                                t_val = str(c['fields'].get('type', ''))
-                                if t_val.startswith('Ref:'):
-                                    ref_t = t_val.split(':')[1]
-                                    if ref_t in sel_tbls and ref_t != t:
-                                        graph[t].append(ref_t)
-                        
-                        visited, temp, order = set(), set(), []
-                        def visit(n):
-                            if n in temp or n in visited: return
-                            temp.add(n)
-                            for m in graph.get(n, []): visit(m)
-                            temp.remove(n)
-                            visited.add(n)
-                            order.append(n)
-                        for t in sel_tbls: visit(t)
-                        
-                        st.session_state.t_logs.append(f"🧩 Ordem de processamento (Dependências resolvidas): {', '.join(order)}")
-                        
-                        table_tasks = []
-                        source_col_map = {}
-                        
-                        for tid in order:
-                            st.session_state.t_logs.append(f"\n➤ Processando Tabela: {tid}")
-                            cols = schemas[tid]
-                            p1_schema = []
-                            full_schema = []
-                            fids = set()
+                    if st.session_state.t_step == 0:
+                        if c_btn1.button("1️⃣ Executar Fase 1 (Estrutura)", type="primary"):
+                            st.session_state.t_logs = ["--- INICIANDO FASE 1 (ESTRUTURA INTELIGENTE) ---"]
                             
-                            for c in cols:
-                                cid_str = c['id']
-                                if cid_str == 'manualSort': continue
-                                f = c['fields']
+                            # Topological sort to handle references (Parents first)
+                            graph = {t: [] for t in sel_tbls}
+                            schemas = {}
+                            for t in sel_tbls:
+                                cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, sid, t)
+                                schemas[t] = cols
+                                for c in cols:
+                                    t_val = str(c['fields'].get('type', ''))
+                                    if t_val.startswith('Ref:'):
+                                        ref_t = t_val.split(':')[1]
+                                        if ref_t in sel_tbls and ref_t != t:
+                                            graph[t].append(ref_t)
+                            
+                            visited, temp, order = set(), set(), []
+                            def visit(n):
+                                if n in temp or n in visited: return
+                                temp.add(n)
+                                for m in graph.get(n, []): visit(m)
+                                temp.remove(n)
+                                visited.add(n)
+                                order.append(n)
+                            for t in sel_tbls: visit(t)
+                            
+                            st.session_state.t_logs.append(f"🧩 Ordem de processamento (Dependências resolvidas): {', '.join(order)}")
+                            
+                            table_tasks = []
+                            source_col_map = {}
+                            
+                            for tid in order:
+                                st.session_state.t_logs.append(f"\n➤ Processando Tabela: {tid}")
+                                cols = schemas[tid]
+                                p1_schema = []
+                                full_schema = []
+                                fids = set()
                                 
-                                # Cache source mapping
-                                source_col_map[(tid, cid_str)] = cid_str
-                                source_col_map[(tid, f.get('colRef'))] = cid_str
-                                
-                                full_schema.append({"id": cid_str, "fields": f})
-                                
-                                c_type = str(f.get('type', ''))
-                                
-                                # PHASE 1: Use 'Any' for References to avoid Sandbox/Circular errors
-                                # This is the "Atomic Strategy": Data first, Relations later.
-                                p1_type = c_type
-                                is_ref = c_type.startswith('Ref:')
-                                if is_ref:
-                                    p1_type = 'Any'
-                                
-                                p1_fields = {
-                                    "label": f.get('label'),
-                                    "type": p1_type,
-                                    "isFormula": False,
-                                    "formula": ""
-                                }
-                                
-                                # For Choice/Ref, keep widgetOptions to setup native UI instantly
-                                if c_type == 'Choice' or is_ref:
-                                    wopt_str = f.get('widgetOptions', '')
-                                    # If it's a Ref, we strip widgetOptions in Phase 1 to be 100% safe
-                                    # They will be restored in Phase 3.
+                                for c in cols:
+                                    cid_str = c['id']
+                                    if cid_str == 'manualSort': continue
+                                    f = c['fields']
+                                    
+                                    # Cache source mapping
+                                    source_col_map[(tid, cid_str)] = cid_str
+                                    source_col_map[(tid, f.get('colRef'))] = cid_str
+                                    
+                                    full_schema.append({"id": cid_str, "fields": f})
+                                    
+                                    c_type = str(f.get('type', ''))
+                                    
+                                    # PHASE 1: Use 'Any' for References to avoid Sandbox/Circular errors
+                                    # This is the "Atomic Strategy": Data first, Relations later.
+                                    p1_type = c_type
+                                    is_ref = c_type.startswith('Ref:')
                                     if is_ref:
-                                        wopt_str = ''
-                                    elif wopt_str:
-                                        try:
-                                            wopt = json.loads(wopt_str)
-                                            if "dropdownCondition" in wopt:
-                                                del wopt["dropdownCondition"]
-                                                wopt_str = json.dumps(wopt)
-                                                st.session_state.t_logs.append(f"   ⚠️ Coluna '{cid_str}': dropdownCondition removido temporariamente.")
-                                        except:
-                                            pass
+                                        p1_type = 'Any'
                                     
-                                    p1_fields["widgetOptions"] = wopt_str
-                                    if is_ref:
-                                        ref_target = c_type.split(":")[1]
-                                        st.session_state.t_logs.append(f"   🔗 Coluna '{cid_str}' (Ref -> {ref_target}) configurada como 'Any' para garantir inserção na Fase 2.")
-                                else:
-                                    p1_fields["widgetOptions"] = ''
-                                    st.session_state.t_logs.append(f"   - Coluna '{cid_str}' configurada como {c_type}")
+                                    p1_fields = {
+                                        "label": f.get('label'),
+                                        "type": p1_type,
+                                        "isFormula": False,
+                                        "formula": ""
+                                    }
                                     
-                                p1_schema.append({"id": cid_str, "fields": p1_fields})
+                                    # For Choice/Ref, keep widgetOptions to setup native UI instantly
+                                    if c_type == 'Choice' or is_ref:
+                                        wopt_str = f.get('widgetOptions', '')
+                                        # If it's a Ref, we strip widgetOptions in Phase 1 to be 100% safe
+                                        # They will be restored in Phase 3.
+                                        if is_ref:
+                                            wopt_str = ''
+                                        elif wopt_str:
+                                            try:
+                                                wopt = json.loads(wopt_str)
+                                                if "dropdownCondition" in wopt:
+                                                    del wopt["dropdownCondition"]
+                                                    wopt_str = json.dumps(wopt)
+                                                    st.session_state.t_logs.append(f"   ⚠️ Coluna '{cid_str}': dropdownCondition removido temporariamente.")
+                                            except:
+                                                pass
+                                        
+                                        p1_fields["widgetOptions"] = wopt_str
+                                        if is_ref:
+                                            ref_target = c_type.split(":")[1]
+                                            st.session_state.t_logs.append(f"   🔗 Coluna '{cid_str}' (Ref -> {ref_target}) configurada como 'Any' para garantir inserção na Fase 2.")
+                                    else:
+                                        p1_fields["widgetOptions"] = ''
+                                        st.session_state.t_logs.append(f"   - Coluna '{cid_str}' configurada como {c_type}")
+                                        
+                                    p1_schema.append({"id": cid_str, "fields": p1_fields})
+                                    
+                                    if f.get('isFormula') or cid_str.startswith('gristHelper'):
+                                        fids.add(cid_str)
+                                        
+                                ok_c, m_c = create_table(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, p1_schema)
+                                if ok_c: st.session_state.t_logs.append(f"   ✅ Tabela {tid} criada com sucesso ({len(p1_schema)} colunas).")
+                                else: st.session_state.t_logs.append(f"   ℹ️ Tabela {tid}: {m_c}")
                                 
-                                if f.get('isFormula') or cid_str.startswith('gristHelper'):
-                                    fids.add(cid_str)
-                                    
-                            ok_c, m_c = create_table(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, p1_schema)
-                            if ok_c: st.session_state.t_logs.append(f"   ✅ Tabela {tid} criada com sucesso ({len(p1_schema)} colunas).")
-                            else: st.session_state.t_logs.append(f"   ℹ️ Tabela {tid}: {m_c}")
-                            
-                            table_tasks.append({"id": tid, "fids": fids, "ready": ok_c or m_c == "EXISTING", "schema": full_schema})
-                            
-                        st.session_state.t_tasks = table_tasks
-                        st.session_state.t_src_map = source_col_map
-                        st.session_state.t_step = 1
-                        st.session_state.t_logs.append("\n⏸️ FASE 1 CONCLUÍDA. Verifique o log e prossiga.")
-                        st.rerun()
+                                table_tasks.append({"id": tid, "fids": fids, "ready": ok_c or m_c == "EXISTING", "schema": full_schema})
+                                
+                            st.session_state.t_tasks = table_tasks
+                            st.session_state.t_src_map = source_col_map
+                            st.session_state.t_step = 1
+                            st.session_state.t_logs.append("\n⏸️ FASE 1 CONCLUÍDA. Verifique o log e clique em 'Fase 2' para inserir os dados.")
+                            st.rerun()
 
-                    # Phase 2 and 3 visible if Phase 1 was ever run
-                    if st.session_state.t_step >= 1:
-                        if c_btn2.button("2️⃣ Executar Fase 2", type="primary" if st.session_state.t_step == 1 else "secondary"):
+                    elif st.session_state.t_step == 1:
+                        if c_btn2.button("2️⃣ Executar Fase 2 (Dados)", type="primary"):
                             st.session_state.t_logs.append("\n--- INICIANDO FASE 2 (INSERÇÃO DE DADOS) ---")
                             for task in st.session_state.t_tasks:
                                 tid = task["id"]
@@ -845,10 +843,11 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                 st.session_state.t_logs.append(f"   ✅ {scnt} registros inseridos em {tid}.")
                             
                             st.session_state.t_step = 2
-                            st.session_state.t_logs.append("\n⏸️ FASE 2 CONCLUÍDA. As referências já devem estar vinculadas.")
+                            st.session_state.t_logs.append("\n⏸️ FASE 2 CONCLUÍDA. As referências já devem estar vinculadas. Clique em 'Fase 3' para reativar as Fórmulas.")
                             st.rerun()
 
-                        if c_btn3.button("3️⃣ Executar Fase 3", type="primary" if st.session_state.t_step >= 1 else "secondary"):
+                    elif st.session_state.t_step == 2:
+                        if c_btn3.button("3️⃣ Executar Fase 3 (Fórmulas)", type="primary"):
                             st.session_state.t_logs.append("\n--- INICIANDO FASE 3 (ATIVAÇÃO DE FÓRMULAS E MAPPING) ---")
                             dest_col_map = {}
                             
@@ -874,71 +873,34 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                         "type": f.get('type'),
                                         "isFormula": f.get('isFormula', False),
                                         "formula": f.get('formula', ''),
-                                        "widgetOptions": f.get('widgetOptions', '')
+                                        "widgetOptions": f.get('widgetOptions', ''),
+                                        "visibleCol": None, "displayCol": None
                                     }
-
+                                    
                                     # Resolve Reference mapping
                                     if str(f.get('type')).startswith("Ref:"):
                                         rt = str(f.get('type')).split(":")[1]
-
-                                        # 1. Translate visibleCol (Search in TARGET table)
                                         vid = f.get('visibleCol')
                                         if vid and (rt, vid) in st.session_state.t_src_map:
                                             vstr = st.session_state.t_src_map[(rt, vid)]
                                             nvid = get_dest_id(rt, vstr)
-                                            if nvid: 
-                                                nf["visibleCol"] = nvid
-                                                st.session_state.t_logs.append(f"   - {cid}: visibleCol mapeado para '{vstr}' em {rt}")
-
-                                        # 2. Translate displayCol (Can be in CURRENT table or TARGET table)
+                                            if nvid: nf["visibleCol"] = nvid
+                                            st.session_state.t_logs.append(f"   - {cid}: visibleCol mapeado para '{vstr}' (ID {nvid})")
+                                            
                                         did_id = f.get('displayCol')
-                                        if did_id:
-                                            # Try finding in current table first (e.g. gristHelper_Display)
-                                            if (tid, did_id) in st.session_state.t_src_map:
-                                                dstr = st.session_state.t_src_map[(tid, did_id)]
-                                                ndid = get_dest_id(tid, dstr)
-                                                if ndid: 
-                                                    nf["displayCol"] = ndid
-                                                    st.session_state.t_logs.append(f"   - {cid}: displayCol mapeado para '{dstr}' em {tid} (Novo ID: {ndid})")
-
-                                            # Try finding in target table (standard reference behavior)
-                                            elif (rt, did_id) in st.session_state.t_src_map:
-                                                dstr = st.session_state.t_src_map[(rt, did_id)]
-                                                ndid = get_dest_id(rt, dstr)
-                                                if ndid: 
-                                                    nf["displayCol"] = ndid
-                                                    st.session_state.t_logs.append(f"   - {cid}: displayCol mapeado para '{dstr}' em {rt} (Novo ID: {ndid})")
-                                            else:
-                                                # FALLBACK: If we can't find the original displayCol, use the visibleCol
-                                                # This forces Grist to show the label instead of the raw ID.
-                                                if nf.get("visibleCol"):
-                                                    nf["displayCol"] = nf["visibleCol"]
-                                                    st.session_state.t_logs.append(f"   ℹ️ {cid}: displayCol restaurado usando visibleCol como backup.")
-                                                else:
-                                                    st.session_state.t_logs.append(f"   ⚠️ {cid}: Não foi possível restaurar displayCol.")
+                                        if did_id and (tid, did_id) in st.session_state.t_src_map:
+                                            dstr = st.session_state.t_src_map[(tid, did_id)]
+                                            ndid = get_dest_id(tid, dstr)
+                                            if ndid: nf["displayCol"] = ndid
                                     
                                     if f.get('isFormula'):
                                         st.session_state.t_logs.append(f"   - {cid}: Fórmula ativada ('{nf['formula'][:30]}...')")
                                             
                                     upd.append({"id": cid, "fields": nf})
                                     
-                                # Group updates by their field keys to prevent Grist 400 error (same fields requirement)
-                                upd_groups = {}
-                                for u in upd:
-                                    sig = tuple(sorted(u['fields'].keys()))
-                                    if sig not in upd_groups:
-                                        upd_groups[sig] = []
-                                    upd_groups[sig].append(u)
-                                
-                                all_ok = True
-                                for sig, batch in upd_groups.items():
-                                    ok, m = update_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, batch)
-                                    if not ok:
-                                        all_ok = False
-                                        st.session_state.t_logs.append(f"   ❌ Erro PATCH (Lote {list(sig)}): {m}")
-                                
-                                if all_ok:
-                                    st.session_state.t_logs.append(f"   ✅ Inteligência restaurada.")
+                                ok, m = update_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, upd)
+                                if ok: st.session_state.t_logs.append(f"   ✅ Inteligência restaurada.")
+                                else: st.session_state.t_logs.append(f"   ❌ Erro PATCH: {m}")
                             
                             st.session_state.t_step = 3
                             st.session_state.t_logs.append("\n🎉 TRANSPORTE TOTALMENTE CONCLUÍDO!")
