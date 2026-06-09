@@ -433,7 +433,7 @@ def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
 st.markdown("<h2 style='margin-top: -60px;'>🛠️ Grist Admin & Data Toolkit</h2>", unsafe_allow_html=True)
 
 # --- Sidebar: Connection ---
-st.sidebar.markdown("**Versão: e02a162 (Inspetor Fantasma)**")
+st.sidebar.markdown("**Versão: d5de185 (Ação de Usuário)**")
 st.sidebar.header("🔌 Conexão")
 saved_servers = load_saved_servers()
 server_options = ["Grist Cloud (SaaS)"] + list(saved_servers.keys()) + ["+ Adicionar Novo Servidor..."]
