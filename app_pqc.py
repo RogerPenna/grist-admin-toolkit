@@ -10,6 +10,307 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from dotenv import load_dotenv
 
+# i18n Configuration
+i18n = {
+    'pt': {
+        'page_title': 'Gestor PQC - Grist',
+        'sidebar_version': '**Versão: d5de185 (Ação de Usuário)**',
+        'sidebar_conn_header': '🔌 Conexão',
+        'sidebar_server': 'Servidor',
+        'sidebar_add_server': '+ Adicionar Novo Servidor...',
+        'sidebar_new_url': 'Nova URL Base',
+        'sidebar_api_key': 'Grist API Key',
+        'sidebar_save_key': 'Salvar chave',
+        'sidebar_connect_btn': 'Conectar / Atualizar',
+        'sidebar_org': 'Organização',
+        'sidebar_base_url': '📍 Base URL: {url}',
+        'sidebar_reload_btn': '🔄 Recarga Geral',
+        'sidebar_main_menu_header': '🧭 Menu Principal',
+        'sidebar_go_to': 'Ir para:',
+        'menu_access': '🔐 Gestão de Acessos',
+        'menu_data': '🏗️ Engenharia de Dados',
+        'menu_system': '⚙️ Sistema',
+        'main_title': '<h2 style=\'margin-top: -60px;\'>🛠️ Grist Admin & Data Toolkit</h2>',
+        
+        # Tabs - Access
+        'tab_global_view': '👥 Visão Global',
+        'tab_mapping': '🗺️ Mapeamento',
+        'tab_quick_actions': '⚡ Ações Rápidas',
+        'tab_acl': '🛡️ Regras (ACL)',
+        
+        # Tabs - Data Engineering
+        'tab_cloner': '🏗️ Clonador',
+        'tab_transporter': '🚚 Transportador',
+        'tab_audit': '⚖️ Auditoria Integridade',
+        'tab_blueprint': '🛠️ Blueprint',
+        'tab_ai': '📥 IA',
+        
+        # Tabs - System
+        'tab_limits': '📊 Limites',
+        'tab_help': '❓ Ajuda',
+        
+        # Access -> Global View
+        'header_users': 'Usuários: {org}',
+        'filter_name': 'Filtrar Nome',
+        'filter_email': 'Filtrar Email',
+        'user_details': '🕵️ Detalhes por Usuário',
+        'select_user': 'Selecione Usuário',
+        'no_direct_access': 'Sem acessos diretos.',
+        'do_mapping_tab2': 'Faça o mapeamento na aba 2.',
+        
+        # Access -> Mapping
+        'header_doc_mapping': 'Mapeamento de Documentos',
+        'btn_start_mapping': '🚀 Iniciar Mapeamento',
+        'status_scanning': 'Varrendo...',
+        'filters': '### 🔍 Filtros',
+        'hide_inherited': 'Ocultar herdados',
+        'doc': 'Doc',
+        'email': 'Email',
+        'name': 'Nome',
+        'access': 'Acesso',
+        'showing_x_of_y': 'Exibindo {x} de {y}',
+        'btn_sel_all': '✅ Sel. Todos',
+        'btn_clear_sel': '❌ Limpar Sel.',
+        'operations': '📦 Operações ({count})',
+        'dest_doc': 'Doc Destino',
+        'btn_copy': '📄 Copiar',
+        'toast_copy_ok': 'Cópia OK!',
+        'new_level': 'Novo Nível',
+        'btn_update': '✏️ Atualizar',
+        'toast_updated': 'Atualizado!',
+        
+        # Access -> Quick Actions
+        'header_quick_actions': '⚡ Ações Rápidas',
+        'select_doc': 'Selecionar Doc',
+        'emails_add': 'Emails (Adicionar)',
+        'level': 'Nível',
+        'btn_add': 'Adicionar',
+        'toast_added': 'Adicionados!',
+        'emails_remove': 'Emails (Remover)',
+        'btn_remove': 'Remover',
+        'toast_removed': 'Removidos!',
+        'mapping_needed': 'Mapeamento necessário.',
+        
+        # Access -> ACL
+        'header_acl': '🛡️ Regras de Acesso (ACL)',
+        'doc_audit': 'Doc para Auditoria',
+        'tab_view': '👁️ Visualizar',
+        'tab_edit': '✍️ Editar',
+        'btn_load': '🔍 Carregar',
+        'new_json_rules': 'Novo JSON de Regras',
+        'btn_apply': '📤 Aplicar',
+        'toast_applied': 'Aplicado!',
+        'err_fetch_orgs': 'Erro ao buscar organizações: {e}',
+        'err_fetch_org_users': 'Erro ao buscar usuários da organização: {e}',
+        'err_fetch_workspaces': 'Erro ao buscar workspaces: {e}',
+        'err_fetch_tables': 'Erro ao buscar tabelas: {e}',
+        'err_fetch_rules': 'Erro ao buscar regras: {e}',
+        'btn_clone': '🚀 Clonar',
+        'toast_completed': 'Concluído!',
+        'header_transporter': '🚚 Transportador de Dados',
+        't_dest_doc': 'Doc Destino',
+        'console_operations': '### 📝 Console de Operações',
+        'inspector_debug': '🔍 Inspetor de Dados (Debug)',
+        'inspector_desc': 'Visualize os dados brutos de qualquer tabela (incluindo colunas escondidas) e exporte para análise.',
+        'err_read_hidden_schema': 'Erro ao ler esquema oculto: {e}',
+        'err_records': 'Erro nos registros: {err_i}',
+        'col_metadata': '📋 Metadados das Colunas (Schema)',
+        'json_schema': '**JSON do Schema (Debug):**',
+        'raw_records': '📄 Registros Brutos',
+        'x_rows_selected': '👉 **{count} linhas selecionadas.**',
+        'json_data': '**JSON dos Dados (Debug):**',
+        'header_audit': '⚖️ Auditoria de Integridade',
+        'load_config': 'Carregar Config',
+        'new_config': '(Nova)',
+        'target_doc': 'Doc Alvo',
+        'ref_table': 'Tabela Ref',
+        'btn_audit': '🔎 Auditoria',
+        'btn_grant': '✨ Conceder',
+        'btn_remove': '🗑️ Remover',
+        'header_blueprint': '🛠️ Blueprint (JSON)',
+        'new_doc_section': '1. Novo Doc',
+        'btn_create': '🆕 Criar',
+        'success_created': 'Criado! {res}',
+        'apply_structure_section': '2. Aplicar Estrutura',
+        'overwrite_warning': '🔥 Sobrescrita (Apagará todas as tabelas atuais)',
+        'blueprint_json': 'Blueprint JSON',
+        'warning_mod_doc': '⚠️ **Atenção:** Você está prestes a modificar o documento **{target_b}** no servidor **{CURRENT_BASE_URL}**.',
+        'confirm_exec_checkbox': 'Eu confirmo que o documento alvo e o servidor estão corretos.',
+        'btn_exec': '🚀 Executar',
+        'err_empty_json_overwrite': "JSON vazio. Marque 'Sobrescrita' se deseja apenas limpar o documento.",
+        'info_disable_formulas': 'Desativando fórmulas para evitar erros de dependência no servidor...',
+        'err_clean_doc': 'Erro ao limpar documento: {m_del}',
+        'success_clean_doc': '🧹 Limpeza concluída: {count} tabelas removidas.',
+        'info_no_user_tables_clean': '🧹 Nenhuma tabela de usuário encontrada para limpar.',
+        'success_clean_only': 'Operação concluída (Apenas limpeza).',
+        'success_blueprint': 'Blueprint OK!',
+        'err_generic': 'Erro: {e}',
+        'header_ai': '📥 Popular com IA',
+        'btn_gen_template': '🪄 Gerar Template',
+        'btn_scan_limits': '🔍 Escanear Limites',
+        'header_help': '📘 Ajuda',
+        'help_markdown': '### 🔐 Gestão de Acessos\n- **Visão Global:** Usuários do Team Site.\n- **Mapeamento:** Auditoria em massa de quem acessa o quê.\n- **Ações Rápidas:** Convites e revogações expressas.\n\n### 🏗️ Engenharia de Dados\n- **Clonador:** Copia esqueletos de tabelas.\n- **Transportador:** Move dados entre documentos.\n- **Auditoria:** Cruza dados de tabelas com acessos reais.\n- **Blueprint:** Infraestrutura como código (JSON).',
+        'warn_no_org': 'Nenhuma org.',
+        'warn_key_needed': 'Chave necessária.',
+        'msg_ok': 'OK!',
+        'sidebar_lang': 'Language / Idioma',
+        'lbl_tables': 'Tabelas',
+        'lbl_ai_template': 'Template IA',
+        'lbl_paste_ai': 'Cole Resposta IA',
+        'btn_populate': '🚀 Povoar',
+    },
+    'en': {
+        'page_title': 'PQC Manager - Grist',
+        'sidebar_version': '**Version: d5de185 (User Action)**',
+        'sidebar_conn_header': '🔌 Connection',
+        'sidebar_server': 'Server',
+        'sidebar_add_server': '+ Add New Server...',
+        'sidebar_new_url': 'New Base URL',
+        'sidebar_api_key': 'Grist API Key',
+        'sidebar_save_key': 'Save key',
+        'sidebar_connect_btn': 'Connect / Update',
+        'sidebar_org': 'Organization',
+        'sidebar_base_url': '📍 Base URL: {url}',
+        'sidebar_reload_btn': '🔄 Full Reload',
+        'sidebar_main_menu_header': '🧭 Main Menu',
+        'sidebar_go_to': 'Go to:',
+        'menu_access': '🔐 Access Management',
+        'menu_data': '🏗️ Data Engineering',
+        'menu_system': '⚙️ System',
+        'main_title': '<h2 style=\'margin-top: -60px;\'>🛠️ Grist Admin & Data Toolkit</h2>',
+        
+        # Tabs - Access
+        'tab_global_view': '👥 Global View',
+        'tab_mapping': '🗺️ Mapping',
+        'tab_quick_actions': '⚡ Quick Actions',
+        'tab_acl': '🛡️ Rules (ACL)',
+        
+        # Tabs - Data Engineering
+        'tab_cloner': '🏗️ Cloner',
+        'tab_transporter': '🚚 Transporter',
+        'tab_audit': '⚖️ Integrity Audit',
+        'tab_blueprint': '🛠️ Blueprint',
+        'tab_ai': '📥 AI',
+        
+        # Tabs - System
+        'tab_limits': '📊 Limits',
+        'tab_help': '❓ Help',
+        
+        # Access -> Global View
+        'header_users': 'Users: {org}',
+        'filter_name': 'Filter Name',
+        'filter_email': 'Filter Email',
+        'user_details': '🕵️ Details by User',
+        'select_user': 'Select User',
+        'no_direct_access': 'No direct access.',
+        'do_mapping_tab2': 'Perform mapping in tab 2.',
+        
+        # Access -> Mapping
+        'header_doc_mapping': 'Document Mapping',
+        'btn_start_mapping': '🚀 Start Mapping',
+        'status_scanning': 'Scanning...',
+        'filters': '### 🔍 Filters',
+        'hide_inherited': 'Hide inherited',
+        'doc': 'Doc',
+        'email': 'Email',
+        'name': 'Name',
+        'access': 'Access',
+        'showing_x_of_y': 'Showing {x} of {y}',
+        'btn_sel_all': '✅ Sel. All',
+        'btn_clear_sel': '❌ Clear Sel.',
+        'operations': '📦 Operations ({count})',
+        'dest_doc': 'Target Doc',
+        'btn_copy': '📄 Copy',
+        'toast_copy_ok': 'Copy OK!',
+        'new_level': 'New Level',
+        'btn_update': '✏️ Update',
+        'toast_updated': 'Updated!',
+        
+        # Access -> Quick Actions
+        'header_quick_actions': '⚡ Quick Actions',
+        'select_doc': 'Select Doc',
+        'emails_add': 'Emails (Add)',
+        'level': 'Level',
+        'btn_add': 'Add',
+        'toast_added': 'Added!',
+        'emails_remove': 'Emails (Remove)',
+        'btn_remove': 'Remove',
+        'toast_removed': 'Removed!',
+        'mapping_needed': 'Mapping needed.',
+        
+        # Access -> ACL
+        'header_acl': '🛡️ Access Rules (ACL)',
+        'doc_audit': 'Doc for Audit',
+        'tab_view': '👁️ View',
+        'tab_edit': '✍️ Edit',
+        'btn_load': '🔍 Load',
+        'new_json_rules': 'New Rules JSON',
+        'btn_apply': '📤 Apply',
+        'toast_applied': 'Applied!',
+        'err_fetch_orgs': 'Error fetching organizations: {e}',
+        'err_fetch_org_users': 'Error fetching organization users: {e}',
+        'err_fetch_workspaces': 'Error fetching workspaces: {e}',
+        'err_fetch_tables': 'Error fetching tables: {e}',
+        'err_fetch_rules': 'Error fetching rules: {e}',
+        'btn_clone': '🚀 Clone',
+        'toast_completed': 'Completed!',
+        'header_transporter': '🚚 Data Transporter',
+        't_dest_doc': 'Target Doc',
+        'console_operations': '### 📝 Operations Console',
+        'inspector_debug': '🔍 Data Inspector (Debug)',
+        'inspector_desc': 'View raw data of any table (including hidden columns) and export for analysis.',
+        'err_read_hidden_schema': 'Error reading hidden schema: {e}',
+        'err_records': 'Error in records: {err_i}',
+        'col_metadata': '📋 Column Metadata (Schema)',
+        'json_schema': '**Schema JSON (Debug):**',
+        'raw_records': '📄 Raw Records',
+        'x_rows_selected': '👉 **{count} rows selected.**',
+        'json_data': '**Data JSON (Debug):**',
+        'header_audit': '⚖️ Integrity Audit',
+        'load_config': 'Load Config',
+        'new_config': '(New)',
+        'target_doc': 'Target Doc',
+        'ref_table': 'Ref Table',
+        'btn_audit': '🔎 Audit',
+        'btn_grant': '✨ Grant',
+        'btn_remove': '🗑️ Remove',
+        'header_blueprint': '🛠️ Blueprint (JSON)',
+        'new_doc_section': '1. New Doc',
+        'btn_create': '🆕 Create',
+        'success_created': 'Created! {res}',
+        'apply_structure_section': '2. Apply Structure',
+        'overwrite_warning': '🔥 Overwrite (Will delete all current tables)',
+        'blueprint_json': 'Blueprint JSON',
+        'warning_mod_doc': '⚠️ **Warning:** You are about to modify the document **{target_b}** on server **{CURRENT_BASE_URL}**.',
+        'confirm_exec_checkbox': 'I confirm the target document and server are correct.',
+        'btn_exec': '🚀 Execute',
+        'err_empty_json_overwrite': "Empty JSON. Check 'Overwrite' if you only want to clear the document.",
+        'info_disable_formulas': 'Disabling formulas to prevent dependency errors on the server...',
+        'err_clean_doc': 'Error clearing document: {m_del}',
+        'success_clean_doc': '🧹 Cleanup completed: {count} tables removed.',
+        'info_no_user_tables_clean': '🧹 No user tables found to clear.',
+        'success_clean_only': 'Operation completed (Cleanup only).',
+        'success_blueprint': 'Blueprint OK!',
+        'err_generic': 'Error: {e}',
+        'header_ai': '📥 Populate with AI',
+        'btn_gen_template': '🪄 Generate Template',
+        'btn_scan_limits': '🔍 Scan Limits',
+        'header_help': '📘 Help',
+        'help_markdown': '### 🔐 Access Management\n- **Global View:** Team Site users.\n- **Mapping:** Mass audit of who accesses what.\n- **Quick Actions:** Express invitations and revocations.\n\n### 🏗️ Data Engineering\n- **Cloner:** Copies table skeletons.\n- **Transporter:** Moves data between documents.\n- **Audit:** Crosses table data with real accesses.\n- **Blueprint:** Infrastructure as code (JSON).',
+        'warn_no_org': 'No org.',
+        'warn_key_needed': 'Key required.',
+        'msg_ok': 'OK!',
+        'sidebar_lang': 'Language / Idioma',
+        'lbl_tables': 'Tables',
+        'lbl_ai_template': 'AI Template',
+        'lbl_paste_ai': 'Paste AI Response',
+        'btn_populate': '🚀 Populate',
+    }
+}
+
+if 'lang' not in st.session_state:
+    st.session_state.lang = 'pt'
+
 # Page Configuration
 st.set_page_config(
     page_title="Gestor PQC - Grist",
@@ -78,7 +379,7 @@ def get_orgs(base_url, api_key):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        st.error(f"Erro ao buscar organizações: {e}")
+        st.error(i18n[st.session_state.lang]["err_fetch_orgs"].format(e=e))
         return []
 
 @st.cache_data(ttl=300)
@@ -92,7 +393,7 @@ def get_org_users(base_url, api_key, org_id):
         data = response.json()
         return data.get("users", [])
     except Exception as e:
-        st.error(f"Erro ao buscar usuários da organização: {e}")
+        st.error(i18n[st.session_state.lang]["err_fetch_org_users"].format(e=e))
         return []
 
 @st.cache_data(ttl=300)
@@ -105,7 +406,7 @@ def get_workspaces_and_docs(base_url, api_key, org_id):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        st.error(f"Erro ao buscar workspaces: {e}")
+        st.error(i18n[st.session_state.lang]["err_fetch_workspaces"].format(e=e))
         return []
 
 @st.cache_data(ttl=600)
@@ -144,7 +445,7 @@ def get_tables(base_url, api_key, doc_id):
         response.raise_for_status()
         return response.json().get('tables', [])
     except Exception as e:
-        st.error(f"Erro ao buscar tabelas: {e}")
+        st.error(i18n[st.session_state.lang]["err_fetch_tables"].format(e=e))
         return []
 
 def get_tables_no_cache(base_url, api_key, doc_id):
@@ -360,7 +661,7 @@ def get_denormalized_rules(base_url, api_key, doc_id):
         rules_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
         resources_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
     except Exception as e:
-        st.error(f"Erro ao buscar regras: {e}")
+        st.error(i18n[st.session_state.lang]["err_fetch_rules"].format(e=e))
         return []
     if not rules_records: return []
     res_map = {}
@@ -430,43 +731,50 @@ def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
     return True
 
 # 3. Main UI Layout
-st.markdown("<h2 style='margin-top: -60px;'>🛠️ Grist Admin & Data Toolkit</h2>", unsafe_allow_html=True)
+st.markdown(i18n[st.session_state.lang]['main_title'], unsafe_allow_html=True)
+
+# --- Sidebar: Language Toggle ---
+lang_options = {'pt': '🇵🇹 Português', 'en': '🇺🇸 English'}
+selected_lang = st.sidebar.radio("Language / Idioma", options=list(lang_options.keys()), format_func=lambda x: lang_options[x], index=0 if st.session_state.lang == 'pt' else 1)
+if selected_lang != st.session_state.lang:
+    st.session_state.lang = selected_lang
+    st.rerun()
 
 # --- Sidebar: Connection ---
-st.sidebar.markdown("**Versão: d5de185 (Ação de Usuário)**")
-st.sidebar.header("🔌 Conexão")
+st.sidebar.markdown(i18n[st.session_state.lang]['sidebar_version'])
+st.sidebar.header(i18n[st.session_state.lang]['sidebar_conn_header'])
 saved_servers = load_saved_servers()
-server_options = ["Grist Cloud (SaaS)"] + list(saved_servers.keys()) + ["+ Adicionar Novo Servidor..."]
+server_options = ["Grist Cloud (SaaS)"] + list(saved_servers.keys()) + [i18n[st.session_state.lang]['sidebar_add_server']]
 if "auth_api_key" not in st.session_state: st.session_state.auth_api_key = os.getenv("GRIST_API_KEY", "")
 if "auth_base_url" not in st.session_state: st.session_state.auth_base_url = "https://docs.getgrist.com/api"
 
-selected_server = st.sidebar.selectbox("Servidor", server_options, index=0 if st.session_state.auth_base_url == "https://docs.getgrist.com/api" else (server_options.index(st.session_state.auth_base_url) if st.session_state.auth_base_url in server_options else 0))
-if selected_server == "+ Adicionar Novo Servidor...":
-    custom_url = st.sidebar.text_input("Nova URL Base")
+selected_server = st.sidebar.selectbox(i18n[st.session_state.lang]['sidebar_server'], server_options, index=0 if st.session_state.auth_base_url == "https://docs.getgrist.com/api" else (server_options.index(st.session_state.auth_base_url) if st.session_state.auth_base_url in server_options else 0))
+if selected_server == i18n[st.session_state.lang]['sidebar_add_server']:
+    custom_url = st.sidebar.text_input(i18n[st.session_state.lang]['sidebar_new_url'])
 elif selected_server == "Grist Cloud (SaaS)":
     st.session_state.auth_base_url = "https://docs.getgrist.com/api"
 else:
     st.session_state.auth_base_url = selected_server
     if saved_servers.get(selected_server): st.session_state.auth_api_key = saved_servers[selected_server]
 
-api_key_input = st.sidebar.text_input("Grist API Key", value=st.session_state.auth_api_key, type="password")
-save_creds = st.sidebar.checkbox("Salvar chave", value=True)
+api_key_input = st.sidebar.text_input(i18n[st.session_state.lang]['sidebar_api_key'], value=st.session_state.auth_api_key, type="password")
+save_creds = st.sidebar.checkbox(i18n[st.session_state.lang]['sidebar_save_key'], value=True)
 
-if st.sidebar.button("Conectar / Atualizar"):
-    if selected_server == "+ Adicionar Novo Servidor..." and custom_url:
+if st.sidebar.button(i18n[st.session_state.lang]['sidebar_connect_btn']):
+    if selected_server == i18n[st.session_state.lang]['sidebar_add_server'] and custom_url:
         st.session_state.auth_base_url = custom_url.strip().rstrip("/")
     st.session_state.auth_api_key = api_key_input
     if save_creds and st.session_state.auth_base_url != "https://docs.getgrist.com/api":
         save_server(st.session_state.auth_base_url, api_key_input)
-    st.cache_data.clear(); st.session_state.mapped_data = None; st.success("OK!"); st.rerun()
+    st.cache_data.clear(); st.session_state.mapped_data = None; st.success(i18n[st.session_state.lang]["msg_ok"]); st.rerun()
 
-if not st.session_state.auth_api_key: st.warning("Chave necessária."); st.stop()
+if not st.session_state.auth_api_key: st.warning(i18n[st.session_state.lang]["warn_key_needed"]); st.stop()
 AUTH_API_KEY, AUTH_BASE_URL = st.session_state.auth_api_key, st.session_state.auth_base_url
 
 # --- Sidebar: Org ---
 st.sidebar.divider()
 orgs = get_orgs(AUTH_BASE_URL, AUTH_API_KEY)
-if not orgs: st.warning("Nenhuma org."); st.stop()
+if not orgs: st.warning(i18n[st.session_state.lang]["warn_no_org"]); st.stop()
 org_map = {f"{org['name']} ({org['id']})": org['id'] for org in orgs}
 org_domain_map = {org['id']: org.get('domain') for org in orgs}
 keys_list = list(org_map.keys())
@@ -489,14 +797,19 @@ st.sidebar.divider()
 st.sidebar.header("🧭 Menu Principal")
 main_menu = st.sidebar.selectbox("Ir para:", ["🔐 Gestão de Acessos", "🏗️ Engenharia de Dados", "⚙️ Sistema"], key="main_nav_menu")
 
-if main_menu == "🔐 Gestão de Acessos":
-    tab1, tab2, tab3, tab4 = st.tabs(["👥 Visão Global", "🗺️ Mapeamento", "⚡ Ações Rápidas", "🛡️ Regras (ACL)"])
+if main_menu == i18n[st.session_state.lang]['menu_access']:
+    tab1, tab2, tab3, tab4 = st.tabs([
+        i18n[st.session_state.lang]['tab_global_view'],
+        i18n[st.session_state.lang]['tab_mapping'],
+        i18n[st.session_state.lang]['tab_quick_actions'],
+        i18n[st.session_state.lang]['tab_acl']
+    ])
     
     with tab1:
-        st.header(f"Usuários: {selected_org_name}")
+        st.header(i18n[st.session_state.lang]['header_users'].format(org=selected_org_name))
         c1, c2 = st.columns(2)
-        f_name = c1.text_input("Filtrar Nome", key="s_g_name")
-        f_email = c2.text_input("Filtrar Email", key="s_g_email")
+        f_name = c1.text_input(i18n[st.session_state.lang]['filter_name'], key="s_g_name")
+        f_email = c2.text_input(i18n[st.session_state.lang]['filter_email'], key="s_g_email")
         users = get_org_users(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         if users:
             df_users = pd.DataFrame(users)
@@ -522,7 +835,7 @@ if main_menu == "🔐 Gestão de Acessos":
             else: st.info("Faça o mapeamento na aba 2.")
 
     with tab2:
-        st.header("Mapeamento de Documentos")
+        st.header(i18n[st.session_state.lang]['header_doc_mapping'])
         MAPPING_FILE = "mapping_cache.json"
         if st.session_state.mapped_data is None and os.path.exists(MAPPING_FILE):
             try:
@@ -537,8 +850,8 @@ if main_menu == "🔐 Gestão de Acessos":
                         st.session_state.mapping_ts = cache.get("timestamp")
             except: pass
         if getattr(st.session_state, 'mapping_ts', None): st.caption(f"📅 {st.session_state.mapping_ts}")
-        if st.button("🚀 Iniciar Mapeamento", key="start_map_btn"):
-            with st.status("Varrendo...") as status:
+        if st.button(i18n[st.session_state.lang]['btn_start_mapping'], key="start_map_btn"):
+            with st.status(i18n[st.session_state.lang]['status_scanning']) as status:
                 wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
                 all_docs = [{'id': d['id'], 'name': d['name'], 'ws': ws.get('name')} for ws in wss for d in ws.get('docs', [])]
                 consolidated = []
@@ -559,19 +872,19 @@ if main_menu == "🔐 Gestão de Acessos":
                 status.update(label="OK!", state="complete")
         if st.session_state.mapped_data is not None:
             df = st.session_state.mapped_data
-            st.markdown("### 🔍 Filtros")
-            h_inh = st.checkbox("Ocultar herdados", value=True)
+            st.markdown(i18n[st.session_state.lang]['filters'])
+            h_inh = st.checkbox(i18n[st.session_state.lang]['hide_inherited'], value=True)
             c1, c2, c3, c4 = st.columns(4)
-            f_d, f_e, f_n, f_a = c1.text_input("Doc"), c2.text_input("Email"), c3.text_input("Nome"), c4.text_input("Acesso")
+            f_d, f_e, f_n, f_a = c1.text_input(i18n[st.session_state.lang]['doc']), c2.text_input(i18n[st.session_state.lang]['email']), c3.text_input(i18n[st.session_state.lang]['name']), c4.text_input(i18n[st.session_state.lang]['access'])
             df_f = df.copy()
             if h_inh: df_f = df_f[~df_f['Nível de Acesso'].str.contains("Herdado|Indefinido", case=False, na=False)]
             if f_d: df_f = df_f[df_f['Documento'].str.contains(f_d, case=False, na=False)]
             if f_e: df_f = df_f[df_f['Email'].str.contains(f_e, case=False, na=False)]
             if f_n: df_f = df_f[df_f['Nome'].str.contains(f_n, case=False, na=False)]
             if f_a: df_f = df_f[df_f['Nível de Acesso'].str.contains(f_a, case=False, na=False)]
-            st.info(f"Exibindo {len(df_f)} de {len(df)}")
-            if st.button("✅ Sel. Todos"): st.session_state.mapped_data.loc[df_f.index, 'Selecionar'] = True; st.rerun()
-            if st.button("❌ Limpar Sel."): st.session_state.mapped_data['Selecionar'] = False; st.rerun()
+            st.info(i18n[st.session_state.lang]['showing_x_of_y'].format(x=len(df_f), y=len(df)))
+            if st.button(i18n[st.session_state.lang]['btn_sel_all']): st.session_state.mapped_data.loc[df_f.index, 'Selecionar'] = True; st.rerun()
+            if st.button(i18n[st.session_state.lang]['btn_clear_sel']): st.session_state.mapped_data['Selecionar'] = False; st.rerun()
             def st_acc(v):
                 v = str(v).lower()
                 if 'owner' in v: return 'background-color: #ffcccc'
@@ -582,24 +895,24 @@ if main_menu == "🔐 Gestão de Acessos":
             edited = st.data_editor(styled, use_container_width=True, hide_index=True, column_config={"Doc ID": None, "Selecionar": st.column_config.CheckboxColumn("Sel")}, disabled=["Documento", "Email", "Nome", "Nível de Acesso", "Workspace"], key="ed_map")
             sel = edited[edited['Selecionar']]
             if not sel.empty:
-                st.divider(); st.subheader(f"📦 Operações ({len(sel)})")
+                st.divider(); st.subheader(i18n[st.session_state.lang]['operations'].format(count=len(sel)))
                 all_docs = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
                 doc_opts = {r['Documento']: r['Doc ID'] for _, r in all_docs.iterrows()}
                 c_a, c_b = st.columns(2)
-                dest = c_a.selectbox("Doc Destino", sorted(doc_opts.keys()), index=None)
-                if c_a.button("📄 Copiar", disabled=not dest):
+                dest = c_a.selectbox(i18n[st.session_state.lang]['dest_doc'], sorted(doc_opts.keys()), index=None)
+                if c_a.button(i18n[st.session_state.lang]['btn_copy'], disabled=not dest):
                     tid = doc_opts[dest]
                     for _, row in sel.iterrows():
                         rl = 'editors'
                         if 'owner' in str(row.get('Nível de Acesso','')).lower(): rl = 'owners'
                         elif 'viewer' in str(row.get('Nível de Acesso','')).lower(): rl = 'viewers'
                         if row.get('Email') != '-': update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, row['Email'], rl)
-                    st.toast("Cópia OK!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                new_l = c_b.selectbox("Novo Nível", ["viewers", "editors", "owners"])
-                if c_b.button("✏️ Atualizar"):
+                    st.toast(i18n[st.session_state.lang]['toast_copy_ok']); st.cache_data.clear(); time.sleep(1); st.rerun()
+                new_l = c_b.selectbox(i18n[st.session_state.lang]['new_level'], ["viewers", "editors", "owners"])
+                if c_b.button(i18n[st.session_state.lang]['btn_update']):
                     for _, row in sel.iterrows():
                         if row.get('Email') != '-': update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, row['Doc ID'], row['Email'], new_l)
-                    st.toast("Atualizado!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    st.toast(i18n[st.session_state.lang]['toast_updated']); st.cache_data.clear(); time.sleep(1); st.rerun()
 
     with tab3:
         st.header("⚡ Ações Rápidas")
@@ -652,13 +965,19 @@ if main_menu == "🔐 Gestão de Acessos":
                         if ok_b:
                             apply_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, tid_r, new_r)
                             st.success("Aplicado!"); st.cache_data.clear()
-                    except Exception as e: st.error(f"Erro: {e}")
+                    except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
-elif main_menu == "🏗️ Engenharia de Dados":
-    tab7, tab_trans, tab6, tab8, tab10 = st.tabs(["🏗️ Clonador", "🚚 Transportador", "⚖️ Auditoria Integridade", "🛠️ Blueprint", "📥 IA"])
+elif main_menu == i18n[st.session_state.lang]['menu_data']:
+    tab7, tab_trans, tab6, tab8, tab10 = st.tabs([
+        i18n[st.session_state.lang]['tab_cloner'],
+        i18n[st.session_state.lang]['tab_transporter'],
+        i18n[st.session_state.lang]['tab_audit'],
+        i18n[st.session_state.lang]['tab_blueprint'],
+        i18n[st.session_state.lang]['tab_ai']
+    ])
     
     with tab7:
-        st.header("🏗️ Clonador de Templates")
+        st.header(i18n[st.session_state.lang]['tab_cloner'])
         if st.session_state.mapped_data is not None:
             all_c = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_c = {r['Documento']: r['Doc ID'] for _, r in all_c.iterrows()}
@@ -678,15 +997,15 @@ elif main_menu == "🏗️ Engenharia de Dados":
                     f = c['fields']
                     clean.append({"id": c['id'], "fields": {"label": f.get("label"), "type": f.get("type"), "isFormula": f.get("isFormula", False), "formula": f.get("formula", ""), "widgetOptions": f.get("widgetOptions", "")}})
                 targets = st.multiselect("Destinos", sorted(doc_opts_c.keys()))
-                if st.button("🚀 Clonar"):
+                if st.button(i18n[st.session_state.lang]["btn_clone"]):
                     for tn in targets:
                         tid = doc_opts_c[tn]
                         ok, msg = create_table(CURRENT_BASE_URL, AUTH_API_KEY, tid, tbl_id, clean)
                         if msg == "EXISTING": add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, tbl_id, clean)
-                    st.success("Concluído!")
+                    st.success(i18n[st.session_state.lang]["toast_completed"])
 
     with tab_trans:
-        st.header("🚚 Transportador de Dados")
+        st.header(i18n[st.session_state.lang]["header_transporter"])
         if st.session_state.mapped_data is not None:
             m_data = st.session_state.mapped_data
             all_t = m_data[['Documento', 'Doc ID']].drop_duplicates()
@@ -697,7 +1016,7 @@ elif main_menu == "🏗️ Engenharia de Dados":
                 sid = doc_opts_t[src_n]
                 tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, sid)
                 sel_tbls = c2.multiselect("Tabelas para Transportar", sorted([t['id'] for t in tables if not t['id'].startswith('_grist')]))
-                dest_n = st.selectbox("Doc Destino", sorted(doc_opts_t.keys()), index=None, key="t_dest")
+                dest_n = st.selectbox(i18n[st.session_state.lang]["t_dest_doc"], sorted(doc_opts_t.keys()), index=None, key="t_dest")
                 
                 if sel_tbls and dest_n:
                     did = doc_opts_t[dest_n]
@@ -978,14 +1297,14 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             st.rerun()
 
                     with st.container(border=True):
-                        st.markdown("### 📝 Console de Operações")
+                        st.markdown(i18n[st.session_state.lang]["console_operations"])
                         st.code("\n".join(st.session_state.get("t_logs", [])), language="markdown")
 
 
             # --- NEW: TABLE INSPECTOR (FOR DEBUGGING) ---
             st.divider()
-            with st.expander("🔍 Inspetor de Dados (Debug)", expanded=False):
-                st.markdown("Visualize os dados brutos de qualquer tabela (incluindo colunas escondidas) e exporte para análise.")
+            with st.expander(i18n[st.session_state.lang]["inspector_debug"], expanded=False):
+                st.markdown(i18n[st.session_state.lang]["inspector_desc"])
                 
                 # Check for mapped data inside the expander context or just use it
                 all_docs_i = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
@@ -1009,14 +1328,14 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                     response_hidden = requests.get(url_hidden, headers=get_auth_headers(AUTH_API_KEY))
                                     raw_cols = response_hidden.json().get('columns', [])
                                 except Exception as e:
-                                    st.error(f"Erro ao ler esquema oculto: {e}")
+                                    st.error(i18n[st.session_state.lang]["err_read_hidden_schema"].format(e=e))
                                     raw_cols = []
                                 st.session_state.insp_schema = raw_cols
                                 
                                 # 2. Fetch Records
                                 raw_recs, err_i = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, insp_doc_id, insp_table_id)
                                 if err_i:
-                                    st.error(f"Erro nos registros: {err_i}")
+                                    st.error(i18n[st.session_state.lang]["err_records"].format(err_i=err_i))
                                     st.session_state.insp_raw_df = None
                                 else:
                                     data_for_df = []
@@ -1028,7 +1347,7 @@ elif main_menu == "🏗️ Engenharia de Dados":
 
                         # --- DISPLAY SECTION ---
                         if getattr(st.session_state, 'insp_schema', None) is not None:
-                            st.subheader("📋 Metadados das Colunas (Schema)")
+                            st.subheader(i18n[st.session_state.lang]["col_metadata"])
                             schema_view = []
                             for c in st.session_state.insp_schema:
                                 f = c['fields']
@@ -1055,11 +1374,11 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             st.dataframe(styled_schema, use_container_width=True, hide_index=True)
                             
                             # Export Schema as JSON
-                            st.markdown("**JSON do Schema (Debug):**")
+                            st.markdown(i18n[st.session_state.lang]["json_schema"])
                             st.code(json.dumps(st.session_state.insp_schema, indent=2, ensure_ascii=False), language="json")
 
                         if getattr(st.session_state, 'insp_raw_df', None) is not None:
-                            st.subheader("📄 Registros Brutos")
+                            st.subheader(i18n[st.session_state.lang]["raw_records"])
                             df_insp = st.session_state.insp_raw_df.copy()
                             df_insp.insert(0, "Selecionar", False)
                             
@@ -1073,30 +1392,30 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             
                             sel_insp = edited_insp[edited_insp["Selecionar"]]
                             if not sel_insp.empty:
-                                st.info(f"👉 **{len(sel_insp)} linhas selecionadas.**")
+                                st.info(i18n[st.session_state.lang]["x_rows_selected"].format(count=len(sel_insp)))
                                 export_json = sel_insp.drop(columns=["Selecionar"]).to_dict(orient='records')
                                 json_str = json.dumps(export_json, indent=2, ensure_ascii=False)
-                                st.markdown("**JSON dos Dados (Debug):**")
+                                st.markdown(i18n[st.session_state.lang]["json_data"])
                                 st.code(json_str, language="json")
         else:
             st.info("Mapeamento necessário.")
 
     with tab6:
-        st.header("⚖️ Auditoria de Integridade")
+        st.header(i18n[st.session_state.lang]["header_audit"])
         configs = load_audit_configs()
-        sel_c = st.selectbox("Carregar Config", ["(Nova)"] + list(configs.keys()))
+        sel_c = st.selectbox(i18n[st.session_state.lang]["load_config"], [i18n[st.session_state.lang]["new_config"]] + list(configs.keys()))
         st.divider()
         if st.session_state.mapped_data is not None:
             all_a = st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates()
             doc_opts_a = {r['Documento']: r['Doc ID'] for _, r in all_a.iterrows()}
             def_idx = next((i for i, k in enumerate(sorted(doc_opts_a.keys())) if doc_opts_a[k] == configs.get(sel_c,{}).get('doc_id')), None)
-            sel_d = st.selectbox("Doc Alvo", sorted(doc_opts_a.keys()), index=def_idx)
+            sel_d = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(doc_opts_a.keys()), index=def_idx)
             if sel_d:
                 did = doc_opts_a[sel_d]
                 tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, did)
                 t_opts = {t['id']: t['id'] for t in tables}
                 def_t_idx = next((i for i, k in enumerate(sorted(t_opts.keys())) if k == configs.get(sel_c,{}).get('table_id')), None)
-                sel_t = st.selectbox("Tabela Ref", sorted(t_opts.keys()), index=def_t_idx)
+                sel_t = st.selectbox(i18n[st.session_state.lang]["ref_table"], sorted(t_opts.keys()), index=def_t_idx)
                 if sel_t:
                     cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, sel_t)
                     c_opts = {c['id']: c['fields']['label'] for c in cols}
@@ -1106,7 +1425,7 @@ elif main_menu == "🏗️ Engenharia de Dados":
                     c1, c2 = st.columns(2)
                     s_title = c1.selectbox("Coluna Título", sorted_l, index=def_ti)
                     s_emails = c2.multiselect("Colunas Email", sorted_l, default=def_em)
-                    if st.button("🔎 Auditoria"):
+                    if st.button(i18n[st.session_state.lang]["btn_audit"]):
                         with st.spinner("Cruzando..."):
                             tid_col = next(k for k,v in c_opts.items() if v == s_title)
                             eid_cols = [k for k,v in c_opts.items() if v in s_emails]
@@ -1141,41 +1460,41 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                     for _, row in sel_r.iterrows():
                                         if row["_type"] == "ref": tg.extend(json.loads(row["_miss"]))
                                         elif row["_type"] == "orph": tr.append(row["_orph"])
-                                    if tg and st.button("✨ Conceder"):
+                                    if tg and st.button(i18n[st.session_state.lang]["btn_grant"]):
                                         for e in set(tg): update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, did, e, "viewers")
-                                        st.success("OK!"); time.sleep(1); st.rerun()
-                                    if tr and st.button("🗑️ Remover"):
+                                        st.success(i18n[st.session_state.lang]["msg_ok"]); time.sleep(1); st.rerun()
+                                    if tr and st.button(i18n[st.session_state.lang]["btn_remove"]):
                                         for e in set(tr): update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, did, e, None)
-                                        st.success("OK!"); time.sleep(1); st.rerun()
+                                        st.success(i18n[st.session_state.lang]["msg_ok"]); time.sleep(1); st.rerun()
         else: st.info("Mapeamento necessário.")
 
     with tab8:
-        st.header("🛠️ Blueprint (JSON)")
-        st.subheader("1. Novo Doc")
+        st.header(i18n[st.session_state.lang]["header_blueprint"])
+        st.subheader(i18n[st.session_state.lang]["new_doc_section"])
         c1, c2 = st.columns([2, 1])
         n_doc = c1.text_input("Nome Doc")
         wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         ws_opts = {ws['name']: ws['id'] for ws in wss}
         s_ws = c2.selectbox("Workspace", sorted(ws_opts.keys()))
-        if st.button("🆕 Criar"):
-            if n_doc: ok, res = create_document(CURRENT_BASE_URL, AUTH_API_KEY, ws_opts[s_ws], n_doc); st.success(f"Criado! {res}"); st.session_state.last_id = res; st.cache_data.clear()
-        st.divider(); st.subheader("2. Aplicar Estrutura")
+        if st.button(i18n[st.session_state.lang]["btn_create"]):
+            if n_doc: ok, res = create_document(CURRENT_BASE_URL, AUTH_API_KEY, ws_opts[s_ws], n_doc); st.success(i18n[st.session_state.lang]["success_created"].format(res=res)); st.session_state.last_id = res; st.cache_data.clear()
+        st.divider(); st.subheader(i18n[st.session_state.lang]["apply_structure_section"])
         # Fetch LIVE docs directly from Grist API to prevent cached ID disasters
         wss_live = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
         opts_b = {d['name']: d['id'] for ws in wss_live for d in ws.get('docs', [])}
         
         if 'last_id' in st.session_state: opts_b["✨ Recém Criado"] = st.session_state.last_id
-        target_b = st.selectbox("Doc Alvo", sorted(opts_b.keys(), reverse=True))
-        ovw = st.checkbox("🔥 Sobrescrita (Apagará todas as tabelas atuais)")
-        js_raw = st.text_area("Blueprint JSON")
+        target_b = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(opts_b.keys(), reverse=True))
+        ovw = st.checkbox(i18n[st.session_state.lang]["overwrite_warning"])
+        js_raw = st.text_area(i18n[st.session_state.lang]["blueprint_json"])
         
         if target_b:
-            st.warning(f"⚠️ **Atenção:** Você está prestes a modificar o documento **{target_b}** no servidor **{CURRENT_BASE_URL}**.")
-            confirm_exec = st.checkbox("Eu confirmo que o documento alvo e o servidor estão corretos.")
+            st.warning(i18n[st.session_state.lang]["warning_mod_doc"].format(target_b=target_b, CURRENT_BASE_URL=CURRENT_BASE_URL))
+            confirm_exec = st.checkbox(i18n[st.session_state.lang]["confirm_exec_checkbox"])
             
-            if st.button("🚀 Executar", disabled=not confirm_exec):
+            if st.button(i18n[st.session_state.lang]["btn_exec"], disabled=not confirm_exec):
                 if not js_raw.strip() and not ovw: 
-                    st.error("JSON vazio. Marque 'Sobrescrita' se deseja apenas limpar o documento.")
+                    st.error(i18n[st.session_state.lang]["err_empty_json_overwrite"])
                 else:
                     try:
                         tid = opts_b[target_b]
@@ -1188,7 +1507,7 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             tables_to_delete = [t['id'] for t in ex if not t['id'].startswith('_grist')]
                             if tables_to_delete:
                                 # Pre-pass: Lobotomy (Convert all columns to empty Text to kill formulas before deleting tables)
-                                st.info("Desativando fórmulas para evitar erros de dependência no servidor...")
+                                st.info(i18n[st.session_state.lang]["info_disable_formulas"])
                                 for del_tid in tables_to_delete:
                                     try:
                                         cols = get_columns_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, tid, del_tid)
@@ -1204,16 +1523,16 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                 
                                 ok_del, m_del = delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, tid, tables_to_delete)
                                 if not ok_del:
-                                    st.error(f"Erro ao limpar documento: {m_del}")
+                                    st.error(i18n[st.session_state.lang]["err_clean_doc"].format(m_del=m_del))
                                     raise Exception("Falha na limpeza.")
                                 else:
-                                    st.success(f"🧹 Limpeza concluída: {len(tables_to_delete)} tabelas removidas.")
+                                    st.success(i18n[st.session_state.lang]["success_clean_doc"].format(count=len(tables_to_delete)))
                                     time.sleep(1)
                             else:
-                                st.info("🧹 Nenhuma tabela de usuário encontrada para limpar.")
+                                st.info(i18n[st.session_state.lang]["info_no_user_tables_clean"])
                                 
                         if not data:
-                            st.success("Operação concluída (Apenas limpeza).")
+                            st.success(i18n[st.session_state.lang]["success_clean_only"])
                         else:
                             # Phase 1: Tables & Non-Ref cols
                             for tbl in data:
@@ -1227,42 +1546,42 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                 t_id = tbl['id']
                                 refs = [{"id": c['id'], "fields": {"label": c.get('label', c['id']), "type": c.get('type'), "isFormula": c.get('isFormula', False), "formula": c.get('formula', '')}} for c in tbl.get('columns', []) if str(c.get('type','')).startswith('Ref:')]
                                 if refs: add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, refs)
-                            st.success("Blueprint OK!")
-                    except Exception as e: st.error(f"Erro: {e}")
+                            st.success(i18n[st.session_state.lang]["success_blueprint"])
+                    except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
     with tab10:
-        st.header("📥 Popular com IA")
+        st.header(i18n[st.session_state.lang]["header_ai"])
         opts_ia = {r['Documento']: r['Doc ID'] for _, r in st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates().iterrows()} if st.session_state.mapped_data is not None else {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
-        sel_ia = st.selectbox("Doc Alvo", sorted(opts_ia.keys()), index=None, key="ia_doc")
+        sel_ia = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(opts_ia.keys()), index=None, key="ia_doc")
         if sel_ia:
             did = opts_ia[sel_ia]
             tbls = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, did)
-            sel_t = st.multiselect("Tabelas", sorted([t['id'] for t in tbls if not t['id'].startswith('_grist')]))
-            if sel_t and st.button("🪄 Gerar Template"):
+            sel_t = st.multiselect(i18n[st.session_state.lang]["lbl_tables"], sorted([t['id'] for t in tbls if not t['id'].startswith('_grist')]))
+            if sel_t and st.button(i18n[st.session_state.lang]["btn_gen_template"]):
                 tpl = []
                 for tid in sel_t:
                     cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, tid)
                     tpl.append({"table_id": tid, "records": [{c['id']: "..." for c in cols if not c['fields'].get('isFormula')}]})
                 st.session_state.ia_tpl = json.dumps(tpl, indent=2)
             if getattr(st.session_state, 'ia_tpl', None):
-                st.text_area("Template IA", st.session_state.ia_tpl, height=200)
-                inp = st.text_area("Cole Resposta IA")
-                if st.button("🚀 Povoar"):
+                st.text_area(i18n[st.session_state.lang]["lbl_ai_template"], st.session_state.ia_tpl, height=200)
+                inp = st.text_area(i18n[st.session_state.lang]["lbl_paste_ai"])
+                if st.button(i18n[st.session_state.lang]["btn_populate"]):
                     try:
                         for item in json.loads(inp): add_records(CURRENT_BASE_URL, AUTH_API_KEY, did, item['table_id'], item['records'])
-                        st.success("OK!"); st.balloons()
-                    except Exception as e: st.error(f"Erro: {e}")
+                        st.success(i18n[st.session_state.lang]["msg_ok"]); st.balloons()
+                    except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
-elif main_menu == "⚙️ Sistema":
-    t_lim, t_help = st.tabs(["📊 Limites", "❓ Ajuda"])
+elif main_menu == i18n[st.session_state.lang]['menu_system']:
+    t_lim, t_help = st.tabs([i18n[st.session_state.lang]['tab_limits'], i18n[st.session_state.lang]['tab_help']])
     with t_lim:
-        st.header("📊 Limites e Uso")
+        st.header(i18n[st.session_state.lang]['tab_limits'])
         if st.session_state.mapped_data is not None:
             docs = st.session_state.mapped_data[['Documento', 'Doc ID', 'Workspace']].drop_duplicates()
         else:
             wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
             docs = pd.DataFrame([{'Documento': d['name'], 'Doc ID': d['id'], 'Workspace': ws['name']} for ws in wss for d in ws.get('docs', [])])
-        if st.button("🔍 Escanear Limites"):
+        if st.button(i18n[st.session_state.lang]["btn_scan_limits"]):
             res = []
             for _, r in docs.iterrows():
                 size = get_real_data_size(CURRENT_BASE_URL, AUTH_API_KEY, r['Doc ID'])
@@ -1274,16 +1593,5 @@ elif main_menu == "⚙️ Sistema":
             st.dataframe(st.session_state.usage_df, use_container_width=True, hide_index=True, column_config={"Linhas (%)": st.column_config.ProgressColumn(min_value=0, max_value=100), "Dados (%)": st.column_config.ProgressColumn(min_value=0, max_value=100)})
             
     with t_help:
-        st.header("📘 Ajuda")
-        st.markdown("""
-        ### 🔐 Gestão de Acessos
-        - **Visão Global:** Usuários do Team Site.
-        - **Mapeamento:** Auditoria em massa de quem acessa o quê.
-        - **Ações Rápidas:** Convites e revogações expressas.
-        
-        ### 🏗️ Engenharia de Dados
-        - **Clonador:** Copia esqueletos de tabelas.
-        - **Transportador:** Move dados entre documentos.
-        - **Auditoria:** Cruza dados de tabelas com acessos reais.
-        - **Blueprint:** Infraestrutura como código (JSON).
-        """)
+        st.header(i18n[st.session_state.lang]["header_help"])
+        st.markdown(i18n[st.session_state.lang]["help_markdown"])
