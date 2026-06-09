@@ -992,7 +992,8 @@ elif main_menu == "🏗️ Engenharia de Dados":
                             st.dataframe(styled_schema, use_container_width=True, hide_index=True)
                             
                             # Export Schema as JSON
-                            st.text_area("JSON do Schema (Debug)", value=json.dumps(st.session_state.insp_schema, indent=2, ensure_ascii=False), height=150, key="schema_json_view")
+                            st.markdown("**JSON do Schema (Debug):**")
+                            st.code(json.dumps(st.session_state.insp_schema, indent=2, ensure_ascii=False), language="json")
 
                         if getattr(st.session_state, 'insp_raw_df', None) is not None:
                             st.subheader("📄 Registros Brutos")
@@ -1012,7 +1013,8 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                 st.info(f"👉 **{len(sel_insp)} linhas selecionadas.**")
                                 export_json = sel_insp.drop(columns=["Selecionar"]).to_dict(orient='records')
                                 json_str = json.dumps(export_json, indent=2, ensure_ascii=False)
-                                st.text_area("JSON dos Dados (Debug)", value=json_str, height=200, key="data_json_view")
+                                st.markdown("**JSON dos Dados (Debug):**")
+                                st.code(json_str, language="json")
         else:
             st.info("Mapeamento necessário.")
 
