@@ -421,6 +421,7 @@ def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
 st.markdown("<h2 style='margin-top: -60px;'>🛠️ Grist Admin & Data Toolkit</h2>", unsafe_allow_html=True)
 
 # --- Sidebar: Connection ---
+st.sidebar.markdown("**Versão: e02a162 (Inspetor Fantasma)**")
 st.sidebar.header("🔌 Conexão")
 saved_servers = load_saved_servers()
 server_options = ["Grist Cloud (SaaS)"] + list(saved_servers.keys()) + ["+ Adicionar Novo Servidor..."]
@@ -1094,34 +1095,60 @@ elif main_menu == "🏗️ Engenharia de Dados":
         if st.button("🆕 Criar"):
             if n_doc: ok, res = create_document(CURRENT_BASE_URL, AUTH_API_KEY, ws_opts[s_ws], n_doc); st.success(f"Criado! {res}"); st.session_state.last_id = res; st.cache_data.clear()
         st.divider(); st.subheader("2. Aplicar Estrutura")
-        opts_b = {r['Documento']: r['Doc ID'] for _, r in st.session_state.mapped_data[['Documento', 'Doc ID']].drop_duplicates().iterrows()} if st.session_state.mapped_data is not None else {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
+        # Fetch LIVE docs directly from Grist API to prevent cached ID disasters
+        wss_live = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
+        opts_b = {d['name']: d['id'] for ws in wss_live for d in ws.get('docs', [])}
+        
         if 'last_id' in st.session_state: opts_b["✨ Recém Criado"] = st.session_state.last_id
         target_b = st.selectbox("Doc Alvo", sorted(opts_b.keys(), reverse=True))
-        ovw = st.checkbox("🔥 Sobrescrita")
+        ovw = st.checkbox("🔥 Sobrescrita (Apagará todas as tabelas atuais)")
         js_raw = st.text_area("Blueprint JSON")
-        if st.button("🚀 Executar"):
-            if not js_raw.strip() and not ovw: st.error("JSON vazio.")
-            else:
-                try:
-                    tid = opts_b[target_b]
-                    data = json.loads(js_raw) if js_raw.strip() else []
-                    if ovw:
-                        ex = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, tid)
-                        delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, tid, [t['id'] for t in ex if not t['id'].startswith('_grist')])
-                    # Phase 1: Tables & Non-Ref cols
-                    for tbl in data:
-                        t_id = tbl['id']
-                        cols = [{"id": c['id'], "fields": {"label": c.get('label', c['id']), "type": c.get('type', 'Text'), "isFormula": c.get('isFormula', False), "formula": c.get('formula', '')}} for c in tbl.get('columns', []) if not str(c.get('type','')).startswith('Ref:')]
-                        ok, m = create_table(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, cols)
-                        if m == "EXISTING": add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, cols)
-                    time.sleep(0.5)
-                    # Phase 2: Ref cols
-                    for tbl in data:
-                        t_id = tbl['id']
-                        refs = [{"id": c['id'], "fields": {"label": c.get('label', c['id']), "type": c.get('type'), "isFormula": c.get('isFormula', False), "formula": c.get('formula', '')}} for c in tbl.get('columns', []) if str(c.get('type','')).startswith('Ref:')]
-                        if refs: add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, refs)
-                    st.success("Blueprint OK!")
-                except Exception as e: st.error(f"Erro: {e}")
+        
+        if target_b:
+            st.warning(f"⚠️ **Atenção:** Você está prestes a modificar o documento **{target_b}** no servidor **{CURRENT_BASE_URL}**.")
+            confirm_exec = st.checkbox("Eu confirmo que o documento alvo e o servidor estão corretos.")
+            
+            if st.button("🚀 Executar", disabled=not confirm_exec):
+                if not js_raw.strip() and not ovw: 
+                    st.error("JSON vazio. Marque 'Sobrescrita' se deseja apenas limpar o documento.")
+                else:
+                    try:
+                        tid = opts_b[target_b]
+                        data = []
+                        if js_raw.strip():
+                            data = json.loads(js_raw)
+                            
+                        if ovw:
+                            ex = get_tables_no_cache(CURRENT_BASE_URL, AUTH_API_KEY, tid)
+                            tables_to_delete = [t['id'] for t in ex if not t['id'].startswith('_grist')]
+                            if tables_to_delete:
+                                ok_del, m_del = delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, tid, tables_to_delete)
+                                if not ok_del:
+                                    st.error(f"Erro ao limpar documento: {m_del}")
+                                    raise Exception("Falha na limpeza.")
+                                else:
+                                    st.success(f"🧹 Limpeza concluída: {len(tables_to_delete)} tabelas removidas.")
+                                    time.sleep(1)
+                            else:
+                                st.info("🧹 Nenhuma tabela de usuário encontrada para limpar.")
+                                
+                        if not data:
+                            st.success("Operação concluída (Apenas limpeza).")
+                        else:
+                            # Phase 1: Tables & Non-Ref cols
+                            for tbl in data:
+                                t_id = tbl['id']
+                                cols = [{"id": c['id'], "fields": {"label": c.get('label', c['id']), "type": c.get('type', 'Text'), "isFormula": c.get('isFormula', False), "formula": c.get('formula', '')}} for c in tbl.get('columns', []) if not str(c.get('type','')).startswith('Ref:')]
+                                ok, m = create_table(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, cols)
+                                if m == "EXISTING": add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, cols)
+                            time.sleep(0.5)
+                            # Phase 2: Ref cols
+                            for tbl in data:
+                                t_id = tbl['id']
+                                refs = [{"id": c['id'], "fields": {"label": c.get('label', c['id']), "type": c.get('type'), "isFormula": c.get('isFormula', False), "formula": c.get('formula', '')}} for c in tbl.get('columns', []) if str(c.get('type','')).startswith('Ref:')]
+                                if refs: add_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t_id, refs)
+                            st.success("Blueprint OK!")
+                    except Exception as e: st.error(f"Erro: {e}")
 
     with tab10:
         st.header("📥 Popular com IA")
