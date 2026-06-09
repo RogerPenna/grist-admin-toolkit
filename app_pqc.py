@@ -811,6 +811,41 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                     if f.get('isFormula') or cid_str.startswith('gristHelper'):
                                         fids.add(cid_str)
                                         
+                                # PHASE 1: Second pass to inject our custom display helpers
+                                # We do this after building p1_schema and full_schema
+                                for c in cols:
+                                    f = c['fields']
+                                    c_type = str(f.get('type', ''))
+                                    cid_str = c['id']
+                                    
+                                    if c_type.startswith('Ref:'):
+                                        rt = c_type.split(':')[1]
+                                        vid = f.get('visibleCol')
+                                        if vid:
+                                            vstr = source_col_map.get((rt, vid))
+                                            if vstr:
+                                                helper_id = f"z_disp_{cid_str}"
+                                                
+                                                # Add to Phase 1 creation payload as a plain 'Any' column
+                                                p1_schema.append({
+                                                    "id": helper_id,
+                                                    "fields": {"label": helper_id, "type": "Any", "isFormula": False, "formula": ""}
+                                                })
+                                                
+                                                # Add to full_schema so Phase 3 processes it as a formula
+                                                full_schema.append({
+                                                    "id": helper_id,
+                                                    "fields": {
+                                                        "type": "Any",
+                                                        "isFormula": True,
+                                                        "formula": f"${cid_str}.{vstr}",
+                                                        "_is_custom_helper": True,
+                                                        "for_ref_col": cid_str
+                                                    }
+                                                })
+                                                fids.add(helper_id)
+                                                st.session_state.t_logs.append(f"   🪄 Criando helper visual customizado '{helper_id}' para '{cid_str}'")
+
                                 ok_c, m_c = create_table(CURRENT_BASE_URL, AUTH_API_KEY, did, tid, p1_schema)
                                 if ok_c: st.session_state.t_logs.append(f"   ✅ Tabela {tid} criada com sucesso ({len(p1_schema)} colunas).")
                                 else: st.session_state.t_logs.append(f"   ℹ️ Tabela {tid}: {m_c}")
@@ -890,21 +925,37 @@ elif main_menu == "🏗️ Engenharia de Dados":
                                         "visibleCol": None, "displayCol": None
                                     }
                                     
+                                    # If it's our injected helper, just push the formula update
+                                    if f.get('_is_custom_helper'):
+                                        nf['displayCol'] = 0
+                                        nf['visibleCol'] = 0
+                                        upd.append({"id": cid, "fields": nf})
+                                        st.session_state.t_logs.append(f"   - {cid}: Fórmula ativada ('{nf['formula'][:30]}...')")
+                                        continue
+                                    
                                     # Resolve Reference mapping
                                     if str(f.get('type')).startswith("Ref:"):
                                         rt = str(f.get('type')).split(":")[1]
                                         vid = f.get('visibleCol')
+                                        
+                                        # Map visibleCol
                                         if vid and (rt, vid) in st.session_state.t_src_map:
                                             vstr = st.session_state.t_src_map[(rt, vid)]
                                             nvid = get_dest_id(rt, vstr)
                                             if nvid: nf["visibleCol"] = nvid
                                             st.session_state.t_logs.append(f"   - {cid}: visibleCol mapeado para '{vstr}' (ID {nvid})")
                                             
-                                        did_id = f.get('displayCol')
-                                        if did_id and (tid, did_id) in st.session_state.t_src_map:
-                                            dstr = st.session_state.t_src_map[(tid, did_id)]
-                                            ndid = get_dest_id(tid, dstr)
-                                            if ndid: nf["displayCol"] = ndid
+                                            # We generated a helper for this visibleCol in Phase 1! Let's find its ID in the dest table
+                                            helper_name = f"z_disp_{cid}"
+                                            ndid = get_dest_id(tid, helper_name)
+                                            if ndid:
+                                                nf["displayCol"] = ndid
+                                                st.session_state.t_logs.append(f"   - {cid}: displayCol apontado para helper customizado '{helper_name}' (ID {ndid})")
+                                            else:
+                                                st.session_state.t_logs.append(f"   ⚠️ {cid}: displayCol não encontrou o helper customizado '{helper_name}'")
+                                                nf["displayCol"] = 0
+                                        else:
+                                            nf["displayCol"] = 0
                                     
                                     if f.get('isFormula'):
                                         st.session_state.t_logs.append(f"   - {cid}: Fórmula ativada ('{nf['formula'][:30]}...')")
