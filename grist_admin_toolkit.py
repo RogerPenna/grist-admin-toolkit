@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 i18n = {
     'pt': {
         'page_title': 'Grist Admin & Data Toolkit',
-        'sidebar_version': '**Version: 1.0**',
+        'sidebar_version': '**Version: 1.1**',
         'sidebar_conn_header': '🔌 Conexão',
         'sidebar_server': 'Servidor',
         'sidebar_add_server': '+ Adicionar Novo Servidor...',
@@ -99,6 +99,7 @@ i18n = {
         'btn_load': '🔍 Carregar',
         'new_json_rules': 'Novo JSON de Regras',
         'btn_apply': '📤 Aplicar',
+        'btn_gen_json': '🪄 Gerar JSON (para IA)',
         'toast_applied': 'Aplicado!',
         'err_fetch_orgs': 'Erro ao buscar organizações: {e}',
         'err_fetch_org_users': 'Erro ao buscar usuários da organização: {e}',
@@ -149,7 +150,7 @@ i18n = {
         'btn_gen_template': '🪄 Gerar Template',
         'btn_scan_limits': '🔍 Escanear Limites',
         'header_help': '📘 Ajuda',
-        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Comprehensive User Guide\n\nWelcome to the **Grist Admin & Data Toolkit**. This application is designed for power users and administrators to manage complex Grist organizations, audit security at scale, and perform advanced data engineering tasks.\n\n<a name="sidebar"></a>\n## 🧭 Sidebar & Navigation\nThe sidebar is your command center. \n- **Connection:** You can connect to the standard Grist SaaS (`docs.getgrist.com`) or any self-hosted instance. When adding a custom server, provide the full API URL (e.g., `https://grist.example.com/api`).\n- **API Key:** Requires a valid API Key with **Owner** permissions for the tasks you intend to perform.\n- **Organization:** Switching the organization updates the scope of all tabs. Most tools will only "see" documents within the selected organization.\n- **Full Reload:** Clears the local cache and forces a fresh fetch of organizations and workspaces from the server.\n\n---\n\n# 🔐 Access Management\n\n<a name="global-view"></a>\n### 👥 Global View\nThis tab shows users who are members of the **Team Site** (Organization level).\n- **User List:** Displays the primary email, display name, and their organization-wide role (Viewer, Editor, Admin).\n- **User Details (Deep Audit):** If you have performed a scan in the **Mapping** tab, you can select a user here to see every individual document they have **direct** access to. This is essential for identifying "permission creep" where a user has more access than their global role suggests.\n\n<a name="mapping"></a>\n### 🗺️ Document Mapping\nThe Mapping engine performs a recursive security audit. It iterates through every workspace and every document in the organization, calling the Grist Access API for each.\n- **Scanning:** Since this involves many API calls, it can take a few minutes for large organizations. \n- **Cache:** Results are stored in `mapping_cache.json` to allow you to work across sessions without re-scanning.\n- **Filtering:** Use the filters to find specific users or documents. The "Hide Inherited" option is crucial—it filters out users who have access simply because they are part of a workspace, showing you only those with explicitly granted document-level permissions.\n- **Bulk Operations:** Select multiple users/documents and use the **Operations** panel to:\n    - **Copy Permissions:** Replicate a set of users and their roles from one document to another.\n    - **Update Roles:** Change the access level (e.g., Viewer to Editor) for all selected rows at once.\n\n<a name="quick-actions"></a>\n### ⚡ Quick Actions\nDesigned for speed. If you have a list of 50 emails that need to be added to a specific project document immediately, this is the tool.\n- **Add/Remove:** Paste a list of emails (comma, space, or newline separated). The tool will normalize the emails (lowercase, trim) and apply the requested role.\n\n<a name="acl"></a>\n### 🛡️ Access Rules (ACL)\nGrist\'s internal `_grist_ACLRules` and `_grist_ACLResources` tables are notoriously difficult to read. This tool **denormalizes** them into a human-readable grid.\n- **View:** See which tables and columns are protected and by what formula.\n- **Edit:** For advanced users, you can paste a JSON structure to completely redefine the rules. \n- **Safety:** Every time you apply new rules, the tool automatically saves a timestamped JSON backup in the `/backups` folder. If you break the Sandbox, you can restore from these files.\n\n---\n\n# 🏗️ Data Engineering\n\n<a name="cloner"></a>\n### 🏗️ Table Cloner\nCopies the **Schema** (structure) of a table from a source document to one or more target documents.\n- It copies column IDs, Labels, Types, Formulas, and Widget Options.\n- **Note:** It does **not** move the data (rows), only the structure. Ideal for creating templates.\n\n<a name="transporter"></a>\n### 🚚 Data Transporter\nA sophisticated 3-phase engine to move entire datasets between documents while preserving relationships and formulas.\n- **Phase 1 (Structure):** Creates the tables. To prevent "Sandbox Errors" caused by circular references (e.g., Table A refers to B, and B refers to A), it initially creates all Reference columns as "Any" type.\n- **Phase 2 (Data):** Transfers all records in batches of 500. Reference IDs (Row IDs) are preserved.\n- **Phase 3 (Formulas):** The "Intelligence" phase. It updates the columns to their final types, restores the `visibleCol` mapping (the column shown in the dropdown), and re-activates Python formulas.\n\n<a name="audit"></a>\n### ⚖️ Integrity Audit\nThis is a specialized "Sync" tool. It compares a **Control Table** (a table inside Grist where you manage who *should* have access) with **Actual Grist Permissions**.\n- **Missing (🔴):** Users who are in your table but don\'t actually have access to the document. Use "Grant" to fix this.\n- **Orphan (☢️):** Users who have access to the document but are NOT in your control table. Use "Remove" to revoke unauthorized access.\n\n<a name="blueprint"></a>\n### 🛠️ Blueprint (JSON)\nEnables "Infrastructure as Code" for Grist.\n- **Wipe & Rebuild:** If "Overwrite" is checked, the tool performs a **"Lobotomy"**: it first converts all columns in the document to plain text (removing formulas) to ensure the Grist Sandbox doesn\'t crash during table deletion. It then deletes all tables and rebuilds the document from your JSON blueprint.\n\n<a name="ai"></a>\n### 📥 Populate with AI\nBridge the gap between LLMs and Grist.\n- **Template:** Generates a JSON structure of your table with "..." placeholders.\n- **Workflow:** Paste this template into ChatGPT/Claude with a prompt like "Fill this with 20 realistic rows of project data". Paste the AI response back into the tool to populate your table instantly.\n\n---\n\n# ⚙️ System\n\n<a name="limits"></a>\n### 📊 Limits & Usage\nGrist documents perform best when kept under certain row counts and file sizes.\n- **Scan Limits:** Calculates usage percentages for every document in the organization.\n- **Linhas (%):** Based on the standard 5,000 row "soft limit" for optimal performance.\n- **Dados (%):** Based on a 10MB SQLite file size limit. Helps you identify docs that need optimization or history clearing.',
+        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Guia Completo do Usuário\n\nBem-vindo ao **Grist Admin & Data Toolkit**. Esta aplicação foi desenhada para usuários avançados e administradores gerenciarem organizações complexas no Grist, auditarem segurança em escala e realizarem tarefas avançadas de engenharia de dados.\n\n<a name="sidebar"></a>\n## 🧭 Barra Lateral & Navegação\nA barra lateral é seu centro de comando. \n- **Conexão:** Você pode se conectar ao Grist SaaS padrão (`docs.getgrist.com`) ou qualquer instância auto-hospedada.\n- **Chave API:** Requer uma chave API válida com permissões de **Owner**.\n- **Organização:** Alternar a organização atualiza o escopo de todas as abas.\n- **Recarga Total:** Limpa o cache local e força uma nova busca no servidor.\n\n---\n\n# 🔐 Gestão de Acessos\n\n### 👥 Visão Global\nEsta aba mostra usuários que são membros do **Team Site** (nível da Organização).\n- **Lista de Usuários:** Exibe o email principal, nome de exibição e seu papel global (Viewer, Editor, Admin).\n- **Detalhes do Usuário (Auditoria Profunda):** Se você realizou um scan na aba de **Mapeamento**, pode selecionar um usuário aqui para ver cada documento individual ao qual ele tem acesso **direto**.\n\n### 🗺️ Mapeamento de Documentos\nO motor de Mapeamento realiza uma auditoria de segurança recursiva.\n- **Escaneamento:** Como envolve muitas chamadas de API, pode levar alguns minutos em organizações grandes.\n- **Cache:** Resultados são salvos em `mapping_cache.json`.\n- **Filtros:** Use o filtro "Ocultar Herdados" para ver apenas permissões concedidas explicitamente no nível do documento.\n\n### 🛡️ Regras de Acesso (ACL)\nAs tabelas internas do Grist (`_grist_ACLRules` e `_grist_ACLResources`) são notoriamente difíceis de ler. Esta ferramenta as **denormaliza** em uma grade legível.\n- **Edição Assistida por IA:** Use o botão **"🪄 Gerar JSON (para IA)"** para exportar as regras atuais e modificá-las com a ajuda de uma IA.\n\n# 🏗️ Engenharia de Dados\n\n### 🚚 Transportador de Dados\nMove conjuntos de dados entre documentos preservando relações e fórmulas em 3 fases (Estrutura, Dados e Inteligência).\n\n### 🛠️ Blueprint (JSON)\nInfraestrutura como Código para o Grist.\n- **Extração com IA:** Use o botão **"🪄 Gerar JSON (para IA)"** para capturar a estrutura de um documento existente.\n\n### 📥 Popular com IA\nIntegração para gerar dados de teste realistas.\n- **Templates Melhorados:** Agora inclui **exemplos reais** das suas tabelas para dar contexto à IA.',
         'warn_no_org': 'Nenhuma org.',
         'warn_key_needed': 'Chave necessária.',
         'msg_ok': 'OK!',
@@ -175,7 +176,7 @@ i18n = {
     },
     'en': {
         'page_title': 'Grist Admin & Data Toolkit',
-        'sidebar_version': '**Version: 1.0**',
+        'sidebar_version': '**Version: 1.1**',
         'sidebar_conn_header': '🔌 Connection',
         'sidebar_server': 'Server',
         'sidebar_add_server': '+ Add New Server...',
@@ -260,6 +261,7 @@ i18n = {
         'btn_load': '🔍 Load',
         'new_json_rules': 'New Rules JSON',
         'btn_apply': '📤 Apply',
+        'btn_gen_json': '🪄 Generate JSON (for AI)',
         'toast_applied': 'Applied!',
         'err_fetch_orgs': 'Error fetching organizations: {e}',
         'err_fetch_org_users': 'Error fetching organization users: {e}',
@@ -310,7 +312,7 @@ i18n = {
         'btn_gen_template': '🪄 Generate Template',
         'btn_scan_limits': '🔍 Scan Limits',
         'header_help': '❓ Help',
-        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Comprehensive User Guide\n\nWelcome to the **Grist Admin & Data Toolkit**. This application is designed for power users and administrators to manage complex Grist organizations, audit security at scale, and perform advanced data engineering tasks.\n\n<a name="sidebar"></a>\n## 🧭 Sidebar & Navigation\nThe sidebar is your command center. \n- **Connection:** You can connect to the standard Grist SaaS (`docs.getgrist.com`) or any self-hosted instance. When adding a custom server, provide the full API URL (e.g., `https://grist.example.com/api`).\n- **API Key:** Requires a valid API Key with **Owner** permissions for the tasks you intend to perform.\n- **Organization:** Switching the organization updates the scope of all tabs. Most tools will only "see" documents within the selected organization.\n- **Full Reload:** Clears the local cache and forces a fresh fetch of organizations and workspaces from the server.\n\n---\n\n# 🔐 Access Management\n\n<a name="global-view"></a>\n### 👥 Global View\nThis tab shows users who are members of the **Team Site** (Organization level).\n- **User List:** Displays the primary email, display name, and their organization-wide role (Viewer, Editor, Admin).\n- **User Details (Deep Audit):** If you have performed a scan in the **Mapping** tab, you can select a user here to see every individual document they have **direct** access to. This is essential for identifying "permission creep" where a user has more access than their global role suggests.\n\n<a name="mapping"></a>\n### 🗺️ Document Mapping\nThe Mapping engine performs a recursive security audit. It iterates through every workspace and every document in the organization, calling the Grist Access API for each.\n- **Scanning:** Since this involves many API calls, it can take a few minutes for large organizations. \n- **Cache:** Results are stored in `mapping_cache.json` to allow you to work across sessions without re-scanning.\n- **Filtering:** Use the filters to find specific users or documents. The "Hide Inherited" option is crucial—it filters out users who have access simply because they are part of a workspace, showing you only those with explicitly granted document-level permissions.\n- **Bulk Operations:** Select multiple users/documents and use the **Operations** panel to:\n    - **Copy Permissions:** Replicate a set of users and their roles from one document to another.\n    - **Update Roles:** Change the access level (e.g., Viewer to Editor) for all selected rows at once.\n\n<a name="quick-actions"></a>\n### ⚡ Quick Actions\nDesigned for speed. If you have a list of 50 emails that need to be added to a specific project document immediately, this is the tool.\n- **Add/Remove:** Paste a list of emails (comma, space, or newline separated). The tool will normalize the emails (lowercase, trim) and apply the requested role.\n\n<a name="acl"></a>\n### 🛡️ Access Rules (ACL)\nGrist\'s internal `_grist_ACLRules` and `_grist_ACLResources` tables are notoriously difficult to read. This tool **denormalizes** them into a human-readable grid.\n- **View:** See which tables and columns are protected and by what formula.\n- **Edit:** For advanced users, you can paste a JSON structure to completely redefine the rules. \n- **Safety:** Every time you apply new rules, the tool automatically saves a timestamped JSON backup in the `/backups` folder. If you break the Sandbox, you can restore from these files.\n\n---\n\n# 🏗️ Data Engineering\n\n<a name="cloner"></a>\n### 🏗️ Table Cloner\nCopies the **Schema** (structure) of a table from a source document to one or more target documents.\n- It copies column IDs, Labels, Types, Formulas, and Widget Options.\n- **Note:** It does **not** move the data (rows), only the structure. Ideal for creating templates.\n\n<a name="transporter"></a>\n### 🚚 Data Transporter\nA sophisticated 3-phase engine to move entire datasets between documents while preserving relationships and formulas.\n- **Phase 1 (Structure):** Creates the tables. To prevent "Sandbox Errors" caused by circular references (e.g., Table A refers to B, and B refers to A), it initially creates all Reference columns as "Any" type.\n- **Phase 2 (Data):** Transfers all records in batches of 500. Reference IDs (Row IDs) are preserved.\n- **Phase 3 (Formulas):** The "Intelligence" phase. It updates the columns to their final types, restores the `visibleCol` mapping (the column shown in the dropdown), and re-activates Python formulas.\n\n<a name="audit"></a>\n### ⚖️ Integrity Audit\nThis is a specialized "Sync" tool. It compares a **Control Table** (a table inside Grist where you manage who *should* have access) with **Actual Grist Permissions**.\n- **Missing (🔴):** Users who are in your table but don\'t actually have access to the document. Use "Grant" to fix this.\n- **Orphan (☢️):** Users who have access to the document but are NOT in your control table. Use "Remove" to revoke unauthorized access.\n\n<a name="blueprint"></a>\n### 🛠️ Blueprint (JSON)\nEnables "Infrastructure as Code" for Grist.\n- **Wipe & Rebuild:** If "Overwrite" is checked, the tool performs a **"Lobotomy"**: it first converts all columns in the document to plain text (removing formulas) to ensure the Grist Sandbox doesn\'t crash during table deletion. It then deletes all tables and rebuilds the document from your JSON blueprint.\n\n<a name="ai"></a>\n### 📥 Populate with AI\nBridge the gap between LLMs and Grist.\n- **Template:** Generates a JSON structure of your table with "..." placeholders.\n- **Workflow:** Paste this template into ChatGPT/Claude with a prompt like "Fill this with 20 realistic rows of project data". Paste the AI response back into the tool to populate your table instantly.\n\n---\n\n# ⚙️ System\n\n<a name="limits"></a>\n### 📊 Limits & Usage\nGrist documents perform best when kept under certain row counts and file sizes.\n- **Scan Limits:** Calculates usage percentages for every document in the organization.\n- **Linhas (%):** Based on the standard 5,000 row "soft limit" for optimal performance.\n- **Dados (%):** Based on a 10MB SQLite file size limit. Helps you identify docs that need optimization or history clearing.',
+        'help_markdown': '<div id="help-top"></div>\n\n# 📖 Comprehensive User Guide\n\nWelcome to the **Grist Admin & Data Toolkit**. This application is designed for power users and administrators to manage complex Grist organizations, audit security at scale, and perform advanced data engineering tasks.\n\n<a name="sidebar"></a>\n## 🧭 Sidebar & Navigation\nThe sidebar is your command center. \n- **Connection:** You can connect to the standard Grist SaaS (`docs.getgrist.com`) or any self-hosted instance. When adding a custom server, provide the full API URL (e.g., `https://grist.example.com/api`).\n- **API Key:** Requires a valid API Key with **Owner** permissions for the tasks you intend to perform.\n- **Organization:** Switching the organization updates the scope of all tabs. Most tools will only "see" documents within the selected organization.\n- **Full Reload:** Clears the local cache and forces a fresh fetch of organizations and workspaces from the server.\n\n---\n\n# 🔐 Access Management\n\n<a name="global-view"></a>\n### 👥 Global View\nThis tab shows users who are members of the **Team Site** (Organization level).\n- **User List:** Displays the primary email, display name, and their organization-wide role (Viewer, Editor, Admin).\n- **User Details (Deep Audit):** If you have performed a scan in the **Mapping** tab, you can select a user here to see every individual document they have **direct** access to. This is essential for identifying "permission creep" where a user has more access than their global role suggests.\n\n<a name="mapping"></a>\n### 🗺️ Document Mapping\nThe Mapping engine performs a recursive security audit. It iterates through every workspace and every document in the organization, calling the Grist Access API for each.\n- **Scanning:** Since this involves many API calls, it can take a few minutes for large organizations. \n- **Cache:** Results are stored in `mapping_cache.json` to allow you to work across sessions without re-scanning.\n- **Filtering:** Use the filters to find specific users or documents. The "Hide Inherited" option is crucial—it filters out users who have access simply because they are part of a workspace, showing you only those with explicitly granted document-level permissions.\n- **Bulk Operations:** Select multiple users/documents and use the **Operations** panel to:\n    - **Copy Permissions:** Replicate a set of users and their roles from one document to another.\n    - **Update Roles:** Change the access level (e.g., Viewer to Editor) for all selected rows at once.\n\n<a name="quick-actions"></a>\n### ⚡ Quick Actions\nDesigned for speed. If you have a list of 50 emails that need to be added to a specific project document immediately, this is the tool.\n- **Add/Remove:** Paste a list of emails (comma, space, or newline separated). The tool will normalize the emails (lowercase, trim) and apply the requested role.\n\n<a name="acl"></a>\n### 🛡️ Access Rules (ACL)\nGrist\'s internal `_grist_ACLRules` and `_grist_ACLResources` tables are notoriously difficult to read. This tool **denormalizes** them into a human-readable grid.\n- **View:** See which tables and columns are protected and by what formula.\n- **Edit:** For advanced users, you can paste a JSON structure to completely redefine the rules. \n- **AI-Assisted Editing:** Use the **"🪄 Generate JSON (for AI)"** button to export the current rules. Paste this into an AI (like ChatGPT or Gemini), ask for modifications, and paste the result back to apply.\n- **Safety:** Every time you apply new rules, the tool automatically saves a timestamped JSON backup in the `/backups` folder. If you break the Sandbox, you can restore from these files.\n\n---\n\n# 🏗️ Data Engineering\n\n<a name="cloner"></a>\n### 🏗️ Table Cloner\nCopies the **Schema** (structure) of a table from a source document to one or more target documents.\n- It copies column IDs, Labels, Types, Formulas, and Widget Options.\n- **Note:** It does **not** move the data (rows), only the structure. Ideal for creating templates.\n\n<a name="transporter"></a>\n### 🚚 Data Transporter\nA sophisticated 3-phase engine to move entire datasets between documents while preserving relationships and formulas.\n- **Phase 1 (Structure):** Creates the tables. To prevent "Sandbox Errors" caused by circular references (e.g., Table A refers to B, and B refers to A), it initially creates all Reference columns as "Any" type.\n- **Phase 2 (Data):** Transfers all records in batches of 500. Reference IDs (Row IDs) are preserved.\n- **Phase 3 (Formulas):** The "Intelligence" phase. It updates the columns to their final types, restores the `visibleCol` mapping (the column shown in the dropdown), and re-activates Python formulas.\n\n<a name="audit"></a>\n### ⚖️ Integrity Audit\nThis is a specialized "Sync" tool. It compares a **Control Table** (a table inside Grist where you manage who *should* have access) with **Actual Grist Permissions**.\n- **Missing (🔴):** Users who are in your table but don\'t actually have access to the document. Use "Grant" to fix this.\n- **Orphan (☢️):** Users who have access to the document but are NOT in your control table. Use "Remove" to revoke unauthorized access.\n\n<a name="blueprint"></a>\n### 🛠️ Blueprint (JSON)\nEnables "Infrastructure as Code" for Grist.\n- **AI Blueprinting:** Use the **"🪄 Generate JSON (for AI)"** button to capture the structure of an existing document. This is perfect for refactoring or cloning structures with AI help.\n- **Wipe & Rebuild:** If "Overwrite" is checked, the tool performs a **"Lobotomy"**: it first converts all columns in the document to plain text (removing formulas) to ensure the Grist Sandbox doesn\'t crash during table deletion. It then deletes all tables and rebuilds the document from your JSON blueprint.\n\n<a name="ai"></a>\n### 📥 Populate with AI\nBridge the gap between LLMs and Grist.\n- **Enhanced Templates:** The template generated now includes **real sample records** from your tables. This provides the AI with crucial context on your data format, leading to much better generation results.\n- **Workflow:** Paste this template into ChatGPT/Claude with a prompt like "Fill this with 20 realistic rows of project data". Paste the AI response back into the tool to populate your table instantly.\n\n---\n\n# ⚙️ System\n\n<a name="limits"></a>\n### 📊 Limits & Usage\nGrist documents perform best when kept under certain row counts and file sizes.\n- **Scan Limits:** Calculates usage percentages for every document in the organization.\n- **Linhas (%):** Based on the standard 5,000 row "soft limit" for optimal performance.\n- **Dados (%):** Based on a 10MB SQLite file size limit. Helps you identify docs that need optimization or history clearing.',
         'warn_no_org': 'No org.',
         'warn_key_needed': 'Key required.',
         'msg_ok': 'OK!',
@@ -685,11 +687,10 @@ def save_audit_config(name, config_data):
         json.dump(configs, f, indent=2, ensure_ascii=False)
 
 def get_denormalized_rules(base_url, api_key, doc_id):
-    try:
-        rules_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
-        resources_records = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
-    except Exception as e:
-        st.error(i18n[st.session_state.lang]["err_fetch_rules"].format(e=e))
+    rules_records, err1 = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
+    resources_records, err2 = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
+    if err1 or err2:
+        st.error(i18n[st.session_state.lang]["err_fetch_rules"].format(e=err1 or err2))
         return []
     if not rules_records: return []
     res_map = {}
@@ -726,12 +727,12 @@ def backup_rules_locally(doc_name, rules_data):
 
 def apply_denormalized_rules(base_url, api_key, doc_id, new_rules_json):
     base_url = base_url.strip().rstrip("/")
-    current = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
+    current, err1 = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLRules')
     if current:
         ids_to_del = [r['id'] for r in current]
         url_del = f"{base_url}/docs/{doc_id}/tables/_grist_ACLRules/data/delete"
         requests.post(url_del, headers=get_auth_headers(api_key), json=ids_to_del)
-    all_res = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
+    all_res, err2 = fetch_table_records(base_url, api_key, doc_id, '_grist_ACLResources')
     res_map = {}
     for r in all_res:
         rf = r['fields']
@@ -1039,7 +1040,16 @@ if main_menu_key == 'access':
                     df_r = pd.DataFrame(st.session_state.acl_data)
                     st.dataframe(df_r, use_container_width=True, hide_index=True)
             with st2:
-                ed_json = st.text_area(i18n[st.session_state.lang]["new_json_rules"])
+                if st.button(i18n[st.session_state.lang]["btn_gen_json"]):
+                    rules = get_denormalized_rules(CURRENT_BASE_URL, AUTH_API_KEY, tid_r)
+                    clean_rules = []
+                    for r in rules:
+                        cr = r.copy()
+                        if "ID Regra" in cr: del cr["ID Regra"]
+                        clean_rules.append(cr)
+                    st.session_state.acl_editor_area = json.dumps(clean_rules, indent=2, ensure_ascii=False)
+
+                ed_json = st.text_area(i18n[st.session_state.lang]["new_json_rules"], key="acl_editor_area", height=400)
                 if st.button(i18n[st.session_state.lang]["btn_apply"]):
                     try:
                         new_r = json.loads(ed_json)
@@ -1517,7 +1527,7 @@ elif main_menu_key == 'data':
                             eid_cols = [k for k,v in c_opts.items() if v in s_emails]
                             doc_u = get_doc_users(CURRENT_BASE_URL, AUTH_API_KEY, did)
                             act_m = {u['email'].strip().lower(): u.get('access') for u in doc_u if u.get('email')}
-                            recs = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, did, sel_t)
+                            recs, err_a = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, did, sel_t)
                             t_data, matched = [], set()
                             for r in recs:
                                 f = r['fields']
@@ -1573,7 +1583,21 @@ elif main_menu_key == 'data':
         if 'last_id' in st.session_state: opts_b[i18n[st.session_state.lang]['newly_created']] = st.session_state.last_id
         target_b = st.selectbox(i18n[st.session_state.lang]["target_doc"], sorted(opts_b.keys(), reverse=True))
         ovw = st.checkbox(i18n[st.session_state.lang]["overwrite_warning"])
-        js_raw = st.text_area(i18n[st.session_state.lang]["blueprint_json"])
+        
+        if st.button(i18n[st.session_state.lang]["btn_gen_json"]):
+             tid = opts_b[target_b]
+             tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, tid)
+             blueprint = []
+             for t in tables:
+                 if t['id'].startswith('_grist'): continue
+                 cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, tid, t['id'])
+                 blueprint.append({
+                     "id": t['id'],
+                     "columns": [{"id": c['id'], "label": c['fields'].get('label'), "type": c['fields'].get('type'), "isFormula": c['fields'].get('isFormula'), "formula": c['fields'].get('formula')} for c in cols if c['id'] != 'manualSort']
+                 })
+             st.session_state.blueprint_editor_area = json.dumps(blueprint, indent=2, ensure_ascii=False)
+
+        js_raw = st.text_area(i18n[st.session_state.lang]["blueprint_json"], key="blueprint_editor_area", height=400)
         
         if target_b:
             st.warning(i18n[st.session_state.lang]["warning_mod_doc"].format(target_b=target_b, CURRENT_BASE_URL=CURRENT_BASE_URL))
@@ -1649,8 +1673,18 @@ elif main_menu_key == 'data':
                 tpl = []
                 for tid in sel_t:
                     cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, did, tid)
-                    tpl.append({"table_id": tid, "records": [{c['id']: "..." for c in cols if not c['fields'].get('isFormula')}]})
-                st.session_state.ia_tpl = json.dumps(tpl, indent=2)
+                    # Try to fetch some sample records
+                    recs, err = fetch_table_records(CURRENT_BASE_URL, AUTH_API_KEY, did, tid)
+                    sample_recs = []
+                    if recs:
+                        for r in recs[:3]: # 3 samples
+                             sample_recs.append({k: v for k, v in r['fields'].items() if not k.startswith('gristHelper')})
+                    
+                    if not sample_recs:
+                        sample_recs = [{c['id']: "..." for c in cols if not c['fields'].get('isFormula')}]
+                        
+                    tpl.append({"table_id": tid, "records": sample_recs})
+                st.session_state.ia_tpl = json.dumps(tpl, indent=2, ensure_ascii=False)
             if getattr(st.session_state, 'ia_tpl', None):
                 st.text_area(i18n[st.session_state.lang]["lbl_ai_template"], st.session_state.ia_tpl, height=200)
                 inp = st.text_area(i18n[st.session_state.lang]["lbl_paste_ai"])

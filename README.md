@@ -9,14 +9,14 @@ A comprehensive Streamlit application designed for Grist power users and adminis
 - **Document Mapping:** Recursive scan of all workspaces and documents to identify individual permissions.
 - **Bulk Operations:** Copy, update, or revoke access for multiple users across multiple documents at once.
 - **Quick Actions:** Rapidly invite or remove batches of users via email lists.
-- **Access Rules (ACL):** Human-readable denormalization of complex Grist ACL tables with JSON backup/restore.
+- **Access Rules (ACL):** Human-readable denormalization of complex Grist ACL tables with JSON backup/restore and **AI-assisted editing** (Generate JSON for AI).
 
 ### 🏗️ Data Engineering
 - **Table Cloner:** Copy table schemas (structure) between documents without moving data.
 - **Data Transporter:** Move entire datasets between documents while maintaining relationship integrity and formulas (3-phase strategy).
 - **Integrity Audit:** Sync Grist permissions with a "Control Table" to identify and fix missing or orphan accesses.
-- **Blueprint (JSON):** Infrastructure as Code for Grist—create or completely rebuild documents from JSON schemas.
-- **Populate with AI:** Integration with LLMs to generate realistic test data based on your table structures.
+- **Blueprint (JSON):** Infrastructure as Code for Grist—create or completely rebuild documents from JSON schemas. Supports **AI-assisted structural extraction**.
+- **Populate with AI:** Integration with LLMs to generate realistic test data based on your table structures. Now includes **real sample records** for better context.
 
 ### ⚙️ System
 - **Limits & Usage:** Monitor document health, row counts, and SQLite file sizes against Grist performance limits.
