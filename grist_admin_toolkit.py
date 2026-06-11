@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 i18n = {
     'pt': {
         'page_title': 'Grist Admin & Data Toolkit',
-        'sidebar_version': '**Version: 1.1**',
+        'sidebar_version': '**Version: 1.2**',
         'sidebar_conn_header': '🔌 Conexão',
         'sidebar_server': 'Servidor',
         'sidebar_add_server': '+ Adicionar Novo Servidor...',
@@ -78,6 +78,17 @@ i18n = {
         'new_level': 'Novo Nível',
         'btn_update': '✏️ Atualizar',
         'toast_updated': 'Atualizado!',
+        'header_org_invite': '➕ Convidar para Organização',
+        'emails_to_invite': 'Emails (Separados por vírgula ou espaço)',
+        'btn_invite': '🚀 Convidar',
+        'toast_invited': 'Convites enviados!',
+        'warn_non_members': '⚠️ **Usuários Externos:** Os seguintes usuários não são membros da organização. Eles serão adicionados como **GUESTS** (limitado a 2 no plano free):',
+        'btn_add_to_org_first': '🏢 Adicionar à Organização Primeiro',
+        'btn_proceed_guest': '👤 Prosseguir como Guest',
+        'role_owners': 'Proprietário',
+        'role_editors': 'Editor',
+        'role_viewers': 'Observador',
+        'role_members': 'Membro (Sem Acesso Padrão)',
         
         # Access -> Quick Actions
         'header_quick_actions': '⚡ Ações Rápidas',
@@ -176,7 +187,7 @@ i18n = {
     },
     'en': {
         'page_title': 'Grist Admin & Data Toolkit',
-        'sidebar_version': '**Version: 1.1**',
+        'sidebar_version': '**Version: 1.2**',
         'sidebar_conn_header': '🔌 Connection',
         'sidebar_server': 'Server',
         'sidebar_add_server': '+ Add New Server...',
@@ -240,6 +251,17 @@ i18n = {
         'new_level': 'New Level',
         'btn_update': '✏️ Update',
         'toast_updated': 'Updated!',
+        'header_org_invite': '➕ Invite to Organization',
+        'emails_to_invite': 'Emails (Comma or space separated)',
+        'btn_invite': '🚀 Invite',
+        'toast_invited': 'Invitations sent!',
+        'warn_non_members': '⚠️ **External Users:** The following users are not members of the organization. They will be added as **GUESTS** (limited to 2 on free plan):',
+        'btn_add_to_org_first': '🏢 Add to Organization First',
+        'btn_proceed_guest': '👤 Proceed as Guest',
+        'role_owners': 'Owner',
+        'role_editors': 'Editor',
+        'role_viewers': 'Viewer',
+        'role_members': 'Member (No Default Access)',
         
         # Access -> Quick Actions
         'header_quick_actions': '⚡ Quick Actions',
@@ -457,6 +479,19 @@ def update_doc_access(base_url, api_key, doc_id, email, role):
     base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id.strip()}/access"
+        payload = {"delta": {"users": {email.strip(): role}}}
+        response = requests.patch(url, headers=get_auth_headers(api_key), json=payload)
+        if response.status_code != 200:
+             return False, f"Erro {response.status_code}: {response.text}"
+        return True, "Sucesso!"
+    except Exception as e:
+        return False, str(e)
+
+def update_org_access(base_url, api_key, org_id, email, role):
+    """Updates user access at the organization level via PATCH /access with delta."""
+    base_url = base_url.strip().rstrip("/")
+    try:
+        url = f"{base_url}/orgs/{org_id}/access"
         payload = {"delta": {"users": {email.strip(): role}}}
         response = requests.patch(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code != 200:
@@ -900,6 +935,30 @@ if main_menu_key == 'access':
             if f_name: df_display = df_display[df_display['Nome'].str.contains(f_name, case=False, na=False)]
             if f_email: df_display = df_display[df_display['Email'].str.contains(f_email, case=False, na=False)]
             st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            with st.expander(i18n[st.session_state.lang]['header_org_invite']):
+                c_inv1, c_inv2 = st.columns([3, 1])
+                emails_inv = c_inv1.text_area(i18n[st.session_state.lang]['emails_to_invite'], key="emails_inv_org")
+                
+                # Role mapping for organization levels
+                org_roles = {
+                    i18n[st.session_state.lang]['role_owners']: "owners",
+                    i18n[st.session_state.lang]['role_editors']: "editors",
+                    i18n[st.session_state.lang]['role_viewers']: "viewers",
+                    i18n[st.session_state.lang]['role_members']: "members"
+                }
+                role_inv_label = c_inv2.selectbox(i18n[st.session_state.lang]['level'], options=list(org_roles.keys()), key="role_inv_org")
+                role_inv = org_roles[role_inv_label]
+                
+                if st.button(i18n[st.session_state.lang]['btn_invite'], key="btn_inv_org"):
+                    list_inv = [e.strip().lower() for e in re.split(r'[,\s\n]+', emails_inv) if e.strip()]
+                    for e in list_inv:
+                        update_org_access(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id, e, role_inv)
+                    st.success(i18n[st.session_state.lang]['toast_invited'])
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+
             st.divider()
             st.subheader(i18n[st.session_state.lang]['user_details'])
             if st.session_state.mapped_data is not None:
@@ -1010,8 +1069,38 @@ if main_menu_key == 'access':
                 rl = c1.selectbox(i18n[st.session_state.lang]['level'], ["viewers", "editors", "owners"], key="q_rl")
                 if c1.button(i18n[st.session_state.lang]['btn_add']):
                     list_e = [e.strip().lower() for e in re.split(r'[,\s\n]+', ems) if e.strip()]
-                    for e in list_e: update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, e, rl)
-                    st.toast(i18n[st.session_state.lang]['toast_added']); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    # Safety Check: Compare with Org Users
+                    org_users = get_org_users(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
+                    org_emails = {u['email'].lower() for u in org_users if u.get('email')}
+                    non_members = [e for e in list_e if e not in org_emails]
+                    
+                    if non_members:
+                        st.session_state.pending_add = {"emails": list_e, "non_members": non_members, "tid": tid, "role": rl}
+                    else:
+                        for e in list_e: update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, tid, e, rl)
+                        st.toast(i18n[st.session_state.lang]['toast_added']); st.cache_data.clear(); time.sleep(1); st.rerun()
+
+                if "pending_add" in st.session_state:
+                    p = st.session_state.pending_add
+                    st.warning(i18n[st.session_state.lang]['warn_non_members'])
+                    st.write(", ".join(p["non_members"]))
+                    cw1, cw2, cw3 = st.columns([1.5, 1, 0.5])
+                    if cw1.button(i18n[st.session_state.lang]['btn_add_to_org_first']):
+                        for e in p["non_members"]:
+                            update_org_access(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id, e, "viewers")
+                        for e in p["emails"]:
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, p["tid"], e, p["role"])
+                        del st.session_state.pending_add
+                        st.toast(i18n[st.session_state.lang]['toast_added']); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    if cw2.button(i18n[st.session_state.lang]['btn_proceed_guest']):
+                        for e in p["emails"]:
+                            update_doc_access(CURRENT_BASE_URL, AUTH_API_KEY, p["tid"], e, p["role"])
+                        del st.session_state.pending_add
+                        st.toast(i18n[st.session_state.lang]['toast_added']); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    if cw3.button("❌", help="Cancelar"):
+                        del st.session_state.pending_add
+                        st.rerun()
+
                 ems_r = c2.text_area(i18n[st.session_state.lang]['emails_remove'])
                 if c2.button(i18n[st.session_state.lang]['btn_remove'], type="primary"):
                     list_er = [e.strip().lower() for e in re.split(r'[,\s\n]+', ems_r) if e.strip()]
