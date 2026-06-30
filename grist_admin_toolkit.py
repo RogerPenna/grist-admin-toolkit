@@ -41,6 +41,7 @@ i18n = {
         # Tabs - Data Engineering
         'tab_cloner': '🏗️ Clonador',
         'tab_transporter': '🚚 Transportador',
+        'tab_import': '📥 Importador CSV/JSON',
         'tab_audit': '⚖️ Auditoria Integridade',
         'tab_blueprint': '🛠️ Blueprint',
         'tab_ai': '📥 IA',
@@ -214,6 +215,7 @@ i18n = {
         # Tabs - Data Engineering
         'tab_cloner': '🏗️ Cloner',
         'tab_transporter': '🚚 Transporter',
+        'tab_import': '📥 CSV/JSON Importer',
         'tab_audit': '⚖️ Integrity Audit',
         'tab_blueprint': '🛠️ Blueprint',
         'tab_ai': '📥 AI',
@@ -617,12 +619,37 @@ def fetch_table_records(base_url, api_key, doc_id, table_name):
         return [], str(e)
 
 def add_records(base_url, api_key, doc_id, table_id, records):
-    """Adds multiple records to a table."""
+    """Adds multiple records to a table. If records contain 'id' keys, uses PUT with require block to preserve custom IDs."""
     base_url = base_url.strip().rstrip("/")
     try:
         url = f"{base_url}/docs/{doc_id}/tables/{table_id}/records"
-        payload = {"records": [{"fields": r} for r in records]}
-        response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
+        has_custom_ids = False
+        if records and isinstance(records[0], dict):
+            has_custom_ids = any("id" in r for r in records)
+            
+        if has_custom_ids:
+            put_records = []
+            for r in records:
+                rec_id = r.get("id")
+                fields = r.get("fields", {})
+                if rec_id is not None:
+                    put_records.append({
+                        "require": {"id": rec_id},
+                        "fields": fields
+                    })
+                else:
+                    put_records.append({
+                        "fields": fields
+                    })
+            payload = {"records": put_records}
+            response = requests.put(url, headers=get_auth_headers(api_key), json=payload)
+        else:
+            if records and isinstance(records[0], dict) and ("fields" in records[0] or "id" in records[0]):
+                payload = {"records": records}
+            else:
+                payload = {"records": [{"fields": r} for r in records]}
+            response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
+            
         if response.status_code == 200:
             return True, f"{len(records)} registros adicionados."
         return False, f"Erro {response.status_code}: {response.text}"
@@ -637,7 +664,8 @@ def create_table(base_url, api_key, doc_id, table_id, columns_payload):
         payload = {"tables": [{"id": table_id, "columns": columns_payload}]}
         response = requests.post(url, headers=get_auth_headers(api_key), json=payload)
         if response.status_code == 200:
-            return True, "Tabela criada."
+            created_id = response.json().get('tables', [])[0].get('id', table_id)
+            return True, created_id
         if "already exists" in response.text.lower():
             return False, "EXISTING"
         return False, f"Erro {response.status_code}: {response.text}"
@@ -912,7 +940,21 @@ main_menu_key = st.sidebar.selectbox(
 )
 
 if main_menu_key == 'access':
-    # ... rest of access code ...
+    # Load mapping cache early so it's available when tab1 renders
+    MAPPING_FILE = "mapping_cache.json"
+    if st.session_state.mapped_data is None and os.path.exists(MAPPING_FILE):
+        try:
+            with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+                if cache.get("org_id") == selected_org_id:
+                    df_c = pd.DataFrame(cache["data"])
+                    cols = ['Selecionar', 'Documento', 'Email', 'Nome', 'Nível de Acesso', 'Workspace', 'Doc ID']
+                    for c in cols:
+                        if c not in df_c.columns: df_c[c] = "-"
+                    st.session_state.mapped_data = df_c
+                    st.session_state.mapping_ts = cache.get("timestamp")
+        except: pass
+
     tab1, tab2, tab3, tab4 = st.tabs([
         i18n[st.session_state.lang]['tab_global_view'],
         i18n[st.session_state.lang]['tab_mapping'],
@@ -930,11 +972,61 @@ if main_menu_key == 'access':
         if users:
             df_users = pd.DataFrame(users)
             df_display = df_users.rename(columns={'email': 'Email', 'name': 'Nome', 'access': 'Acesso Global'})
-            disp_cols = [c for c in ['Email', 'Nome', 'Acesso Global'] if c in df_display.columns]
+            
+            # Map email-to-document count if mapping cache is loaded
+            if st.session_state.mapped_data is not None:
+                df_map = st.session_state.mapped_data
+                df_valid_map = df_map[df_map['Email'] != '-']
+                doc_counts = {}
+                for idx, row in df_valid_map.iterrows():
+                    em = str(row['Email']).strip().lower()
+                    doc_counts[em] = doc_counts.get(em, set())
+                    doc_counts[em].add(row['Doc ID'])
+                
+                doc_counts = {em: len(s) for em, s in doc_counts.items()}
+                df_display['Documentos'] = df_display['Email'].apply(lambda x: doc_counts.get(str(x).strip().lower(), 0))
+            else:
+                df_display['Documentos'] = "Mapeamento Pendente"
+                
+            # Add Select column for batch actions
+            df_display.insert(0, 'Selecionar', False)
+            
+            disp_cols = [c for c in ['Selecionar', 'Email', 'Nome', 'Acesso Global', 'Documentos'] if c in df_display.columns]
             df_display = df_display[disp_cols]
+            
             if f_name: df_display = df_display[df_display['Nome'].str.contains(f_name, case=False, na=False)]
             if f_email: df_display = df_display[df_display['Email'].str.contains(f_email, case=False, na=False)]
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            # Orphan filter checkbox
+            if st.session_state.mapped_data is not None:
+                show_orphans = st.checkbox("🔍 Mostrar apenas usuários órfãos (sem acesso a nenhum documento)", key="chk_show_orphans")
+                if show_orphans:
+                    df_display = df_display[df_display['Documentos'] == 0]
+                    
+            st.markdown(f"**Total de usuários exibidos:** `{len(df_display)}`")
+            
+            # Render as interactive data editor
+            edited_users_df = st.data_editor(
+                df_display, 
+                use_container_width=True, 
+                hide_index=True, 
+                key="users_list_editor",
+                disabled=[c for c in df_display.columns if c != 'Selecionar']
+            )
+            
+            # Batch removal button
+            selected_users = edited_users_df[edited_users_df['Selecionar'] == True]
+            if not selected_users.empty:
+                st.write("")
+                if st.button("🔴 Remover Usuários Selecionados da Organização", type="secondary", key="btn_remove_org_users"):
+                    with st.spinner("Removendo usuários..."):
+                        for idx, row in selected_users.iterrows():
+                            e = row['Email']
+                            update_org_access(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id, e, None)
+                        st.success(f"{len(selected_users)} usuários removidos da organização!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
             
             with st.expander(i18n[st.session_state.lang]['header_org_invite']):
                 c_inv1, c_inv2 = st.columns([3, 1])
@@ -978,18 +1070,6 @@ if main_menu_key == 'access':
         st.header(i18n[st.session_state.lang]['header_doc_mapping'])
         render_help_icon("mapping")
         MAPPING_FILE = "mapping_cache.json"
-        if st.session_state.mapped_data is None and os.path.exists(MAPPING_FILE):
-            try:
-                with open(MAPPING_FILE, "r", encoding="utf-8") as f:
-                    cache = json.load(f)
-                    if cache.get("org_id") == selected_org_id:
-                        df_c = pd.DataFrame(cache["data"])
-                        cols = ['Selecionar', 'Documento', 'Email', 'Nome', 'Nível de Acesso', 'Workspace', 'Doc ID']
-                        for c in cols:
-                            if c not in df_c.columns: df_c[c] = "-"
-                        st.session_state.mapped_data = df_c
-                        st.session_state.mapping_ts = cache.get("timestamp")
-            except: pass
         if getattr(st.session_state, 'mapping_ts', None): st.caption(f"📅 {st.session_state.mapping_ts}")
         if st.button(i18n[st.session_state.lang]['btn_start_mapping'], key="start_map_btn"):
             with st.status(i18n[st.session_state.lang]['status_scanning']) as status:
@@ -1150,9 +1230,10 @@ if main_menu_key == 'access':
                     except Exception as e: st.error(i18n[st.session_state.lang]["err_generic"].format(e=e))
 
 elif main_menu_key == 'data':
-    tab7, tab_trans, tab6, tab8, tab10 = st.tabs([
+    tab7, tab_trans, tab_import, tab6, tab8, tab10 = st.tabs([
         i18n[st.session_state.lang]['tab_cloner'],
         i18n[st.session_state.lang]['tab_transporter'],
+        i18n[st.session_state.lang].get('tab_import', '📥 Importador CSV/JSON'),
         i18n[st.session_state.lang]['tab_audit'],
         i18n[st.session_state.lang]['tab_blueprint'],
         i18n[st.session_state.lang]['tab_ai']
@@ -1581,6 +1662,976 @@ elif main_menu_key == 'data':
                                 json_str = json.dumps(export_json, indent=2, ensure_ascii=False)
                                 st.markdown(i18n[st.session_state.lang]["json_data"])
                                 st.code(json_str, language="json")
+        else:
+            st.info("Mapeamento necessário.")
+
+    with tab_import:
+        st.header(i18n[st.session_state.lang].get('tab_import', '📥 Importador CSV/JSON'))
+        st.markdown(i18n[st.session_state.lang].get('import_desc', 'Importe arquivos CSV/JSON criando novas tabelas ou adicionando a tabelas existentes, com suporte a mapeamento inteligente de referências.'))
+        
+        # 1. Target Document Selection (directly from API, no mapped_data dependency!)
+        wss = get_workspaces_and_docs(CURRENT_BASE_URL, AUTH_API_KEY, selected_org_id)
+        doc_options = {d['name']: d['id'] for ws in wss for d in ws.get('docs', [])}
+            
+        target_doc_name = st.selectbox(
+            i18n[st.session_state.lang].get('import_target_doc', 'Documento de Destino'),
+            sorted(doc_options.keys()),
+            index=None,
+            key="import_target_doc_select"
+        )
+        
+        if target_doc_name:
+            target_doc_id = doc_options[target_doc_name]
+            
+            import_mode_selection = st.radio(
+                "Escolha o Modo de Importação:",
+                ["Individual (CSV Único)", "Relacional Completo (Schema JSON + Pasta CSV)"],
+                horizontal=True,
+                key="import_mode_selection_radio"
+            )
+            
+            if import_mode_selection == "Relacional Completo (Schema JSON + Pasta CSV)":
+                st.subheader("📥 Importação Relacional em Lote")
+                st.markdown("Importe um banco de dados completo no Grist usando um arquivo Schema JSON (com metadados de FKs) e uma pasta contendo os CSVs dos dados.")
+                
+                c1, c2 = st.columns(2)
+                schema_input = c1.text_input("Caminho do arquivo Schema JSON:", value=r"C:\customwidgets\sistemacalibracao\schema_and_data.json")
+                csv_dir_input = c2.text_input("Caminho da pasta de CSVs:", value=r"C:\customwidgets\sistemacalibracao\csv")
+                
+                if st.button("Verificar Fontes e Mapeamento", key="btn_verify_relational"):
+                    if not os.path.exists(schema_input):
+                        st.error(f"Schema JSON não encontrado em: {schema_input}")
+                    elif not os.path.exists(csv_dir_input):
+                        st.error(f"Pasta de CSVs não encontrada em: {csv_dir_input}")
+                    else:
+                        try:
+                            with open(schema_input, 'r', encoding='utf-8-sig') as f:
+                                schema_data = json.load(f)
+                            
+                            tables = list(schema_data.get("Counts", {}).keys())
+                            fks = schema_data.get("FKs", [])
+                            
+                            st.success("Schema JSON carregado com sucesso!")
+                            st.write(f"**Tabelas detectadas:** {len(tables)} | **Relacionamentos (FK):** {len(fks)}")
+                            
+                            # Checklist
+                            checklist = []
+                            for t in sorted(tables):
+                                csv_file = os.path.join(csv_dir_input, f"{t.lower()}.csv")
+                                exists = os.path.exists(csv_file)
+                                size_str = "N/A"
+                                rows = "N/A"
+                                if exists:
+                                    size_bytes = os.path.getsize(csv_file)
+                                    size_str = f"{size_bytes/1024:.2f} KB" if size_bytes < 1024*1024 else f"{size_bytes/(1024*1024):.2f} MB"
+                                    try:
+                                        if os.path.getsize(csv_file) <= 3:
+                                            rows = 0
+                                        else:
+                                            rows = len(pd.read_csv(csv_file))
+                                    except Exception:
+                                        rows = 0
+                                checklist.append({
+                                    "Tabela": t,
+                                    "CSV Encontrado": "✅ Sim" if exists else "❌ Não",
+                                    "Registros": rows,
+                                    "Tamanho": size_str
+                                })
+                            st.table(checklist)
+                            
+                            st.session_state.verified_relational_data = {
+                                "schema_path": schema_input,
+                                "csv_dir": csv_dir_input,
+                                "tables": tables,
+                                "fks": fks,
+                                "columns": schema_data.get("Columns", []),
+                                "previews": schema_data.get("Previews", {})
+                            }
+                        except Exception as e:
+                            st.error(f"Erro ao carregar o Schema: {e}")
+                
+                if st.session_state.get("verified_relational_data"):
+                    verify_info = st.session_state.verified_relational_data
+                    
+                    # 1. Reference detection configuration
+                    st.write("---")
+                    st.subheader("⚙️ Configuração da Detecção Automática de Chaves Estrangeiras (FK)")
+                    ref_tags_input = st.text_input("Tags de identificação de ID (separadas por vírgula):", value="ID_, _ID, ID, FK, REF", key="ref_tags_input")
+                    
+                    search_tags = [t.strip().upper() for t in ref_tags_input.split(",") if t.strip()]
+                    
+                    # Compute detected candidates grouped by table
+                    detected_fks = {}
+                    for t in verify_info["tables"]:
+                        # check if csv exists for this table
+                        csv_file = os.path.join(verify_info["csv_dir"], f"{t.lower()}.csv")
+                        if not os.path.exists(csv_file):
+                            continue
+                        
+                        cols = [c for c in verify_info["columns"] if c['Table'] == t]
+                        for c in cols:
+                            col_id = c['Column']
+                            if col_id.upper() == 'ID':
+                                continue
+                                
+                            # Check tags
+                            is_candidate = False
+                            base_name = col_id
+                            for tag in search_tags:
+                                if tag.endswith('_') and col_id.upper().startswith(tag):
+                                    is_candidate = True
+                                    base_name = col_id[len(tag):]
+                                    break
+                                elif tag.startswith('_') and col_id.upper().endswith(tag):
+                                    is_candidate = True
+                                    base_name = col_id[:-len(tag)]
+                                    break
+                                elif col_id.upper().startswith(tag):
+                                    is_candidate = True
+                                    base_name = col_id[len(tag):]
+                                    break
+                                elif col_id.upper().endswith(tag):
+                                    is_candidate = True
+                                    base_name = col_id[:-len(tag)]
+                                    break
+                                    
+                            # Check if matches any existing JSON FK
+                            existing_fk = next((fk for fk in verify_info["fks"] if fk['Table'] == t and fk['Column'] == col_id), None)
+                            
+                            if is_candidate or existing_fk:
+                                if t not in detected_fks:
+                                    detected_fks[t] = []
+                                    
+                                # Guess target table
+                                target_guess = existing_fk['ForeignTable'] if existing_fk else None
+                                if not target_guess:
+                                    clean_base = base_name.replace('_', '').lower().rstrip('s')
+                                    for tbl in verify_info["tables"]:
+                                        clean_t = tbl.replace('_', '').lower().rstrip('s')
+                                        if clean_base == clean_t or clean_base in clean_t or clean_t in clean_base:
+                                            target_guess = tbl
+                                            break
+                                            
+                                detected_fks[t].append({
+                                    "Column": col_id,
+                                    "TargetGuess": target_guess,
+                                    "Type": c['Type']
+                                })
+                                
+                    # Display expanders for reviewing
+                    st.write("---")
+                    st.subheader("📋 Revisão de Relacionamentos por Tabela")
+                    st.markdown("Revise os relacionamentos detectados. Você pode alterar a tabela destino ou o nome da coluna de exibição (ex: `NAME`, `CODE`, `ABBREVIATION`).")
+                    
+                    reviewed_fks = []
+                    
+                    for t, candidates in sorted(detected_fks.items()):
+                        with st.expander(f"Tabela: {t} ({len(candidates)} relacionamentos detectados)", expanded=False):
+                            for cand in candidates:
+                                col_id = cand["Column"]
+                                c1, c2, c3 = st.columns(3)
+                                with c1:
+                                    st.markdown(f"**Coluna:** `{col_id}`")
+                                with c2:
+                                    # Target table selection
+                                    all_options = ["Nenhum"] + sorted(verify_info["tables"])
+                                    def_idx = 0
+                                    if cand["TargetGuess"] in all_options:
+                                        def_idx = all_options.index(cand["TargetGuess"])
+                                    target_selection = st.selectbox(
+                                        "Tabela Destino",
+                                        options=all_options,
+                                        index=def_idx,
+                                        key=f"fk_target_{t}_{col_id}"
+                                    )
+                                with c3:
+                                    # Fetch target table columns
+                                    target_cols = ["0"]
+                                    if target_selection != "Nenhum":
+                                        target_cols += sorted(list(set([col['Column'] for col in verify_info["columns"] if col['Table'] == target_selection])))
+                                    
+                                    # Suggest default display column (e.g. NAME or ABBREVIATION)
+                                    def_col_idx = 0
+                                    default_disp = "0"
+                                    if target_selection == "MEASUREMENT_UNITS" and "ABBREVIATION" in target_cols:
+                                        default_disp = "ABBREVIATION"
+                                    elif target_selection in ["SITUATIONS", "SUPPLIERS", "USERS", "INSTRUMENTS_TYPES"] and "NAME" in target_cols:
+                                        default_disp = "NAME"
+                                    else:
+                                        for sugg in ["NAME", "ABBREVIATION", "CODE", "DESCRIPTION"]:
+                                            if sugg in target_cols:
+                                                default_disp = sugg
+                                                break
+                                    
+                                    if default_disp in target_cols:
+                                        def_col_idx = target_cols.index(default_disp)
+                                        
+                                    display_col = st.selectbox(
+                                        "Coluna de Exibição (visibleCol)",
+                                        options=target_cols,
+                                        index=def_col_idx,
+                                        key=f"fk_disp_{t}_{col_id}"
+                                    )
+                                    
+                                if target_selection != "Nenhum":
+                                    reviewed_fks.append({
+                                        "Table": t,
+                                        "Column": col_id,
+                                        "ForeignTable": target_selection,
+                                        "DisplayCol": display_col if display_col != "0" else 0
+                                    })
+                                    
+                                    # Target CSV status, preview, and on-demand extraction
+                                    csv_file_target = os.path.join(verify_info["csv_dir"], f"{target_selection.lower()}.csv")
+                                    csv_exists = os.path.exists(csv_file_target)
+                                    
+                                    stat_c, prev_c, act_c = st.columns([1, 1, 1])
+                                    with stat_c:
+                                        if csv_exists:
+                                            st.markdown("✅ **CSV pronto**")
+                                        else:
+                                            st.markdown("❌ **CSV ausente**")
+                                    with prev_c:
+                                        previews = verify_info.get("previews", {})
+                                        preview_rows = previews.get(target_selection, [])
+                                        if preview_rows:
+                                            with st.expander("👁️ Ver prévia (5 lin.)"):
+                                                st.dataframe(pd.DataFrame(preview_rows).head(5), use_container_width=True, hide_index=True)
+                                        else:
+                                            st.caption("*Sem prévia disponível*")
+                                    with act_c:
+                                        if not csv_exists:
+                                            if st.button(f"📥 Extrair {target_selection}", key=f"btn_extract_{t}_{col_id}"):
+                                                with st.spinner(f"Extraindo {target_selection}..."):
+                                                    try:
+                                                        import subprocess
+                                                        ps_cmd = [
+                                                            r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
+                                                            "-ExecutionPolicy", "Bypass",
+                                                            "-File", r"C:\customwidgets\sistemacalibracao\export_tables_to_csv.ps1",
+                                                            "-tables", target_selection
+                                                        ]
+                                                        res = subprocess.run(ps_cmd, capture_output=True, text=True)
+                                                        if res.returncode == 0:
+                                                            st.success("Exportado!")
+                                                            st.rerun()
+                                                        else:
+                                                            st.error(f"Erro: {res.stderr}")
+                                                    except Exception as ex:
+                                                        st.error(str(ex))
+                                    
+                    st.session_state.reviewed_fks = reviewed_fks
+                    
+                    st.warning("⚠️ Atenção: A importação criará tabelas no documento. Se as tabelas já existirem, os dados serão adicionados.")
+                    
+                    if st.button("Iniciar Importação Relacional", type="primary", key="btn_run_relational"):
+                        rel_log_area = st.empty()
+                        rel_logs = ["🚀 Iniciando importação relacional..."]
+                        
+                        def add_rel_log(msg):
+                            rel_logs.append(msg)
+                            rel_log_area.code("\n".join(rel_logs), language="markdown")
+                            
+                        try:
+                            # Topological sorting helper
+                            def topo_sort(tbls, foreign_keys):
+                                adj = {t: set() for t in tbls}
+                                for fk in foreign_keys:
+                                    t_from = fk['Table']
+                                    t_to = fk['ForeignTable']
+                                    if t_from in adj and t_to in adj and t_from != t_to:
+                                        adj[t_from].add(t_to)
+                                        
+                                visited = set()
+                                temp = set()
+                                order = []
+                                
+                                def visit(node):
+                                    if node in temp:
+                                        return
+                                    if node not in visited:
+                                        temp.add(node)
+                                        for dep in adj[node]:
+                                            visit(dep)
+                                        temp.remove(node)
+                                        visited.add(node)
+                                        order.append(node)
+                                        
+                                for t in tbls:
+                                    visit(t)
+                                return order
+                                
+                            def fb_type_to_grist(fb_type):
+                                fb_type = str(fb_type).upper()
+                                if fb_type in ["VARCHAR", "CHAR", "BLOB", "UNKNOWN"]:
+                                    return "Text"
+                                elif fb_type in ["SMALLINT", "INTEGER", "BIGINT"]:
+                                    return "Int"
+                                elif fb_type in ["FLOAT", "DOUBLE"]:
+                                    return "Numeric"
+                                elif fb_type in ["DATE", "TIMESTAMP", "TIME"]:
+                                    return "DateTime"
+                                return "Text"
+                                
+                            def clean_ref_col_name(col_id):
+                                if col_id.lower().startswith('id_'):
+                                    return "ref_" + col_id[3:]
+                                return "ref_" + col_id
+
+                            # Filter tables to only those that have a matching CSV file
+                            active_tables = []
+                            for t in verify_info["tables"]:
+                                csv_file = os.path.join(verify_info["csv_dir"], f"{t.lower()}.csv")
+                                if os.path.exists(csv_file):
+                                    active_tables.append(t)
+                                    
+                            reviewed_fks_list = st.session_state.get("reviewed_fks", [])
+                            ordered_tables = topo_sort(active_tables, reviewed_fks_list)
+                            add_rel_log(f"📌 Ordem de importação calculada (apenas com CSVs): {' -> '.join(ordered_tables)}")
+                            
+                            # Map foreign keys by (Table, Column) -> ForeignTable
+                            table_fks = {}
+                            for fk in reviewed_fks_list:
+                                table_fks[(fk['Table'], fk['Column'])] = fk['ForeignTable']
+                                
+                            # Phase 1: Create all tables with flat columns
+                            add_rel_log("\n--- FASE 1: CRIANDO ESTRUTURAS (TABELAS E COLUNAS PLANAS) ---")
+                            for table_id in ordered_tables:
+                                add_rel_log(f"🛠️ Configurando tabela '{table_id}'...")
+                                schema_payload = []
+                                
+                                # Read CSV data to detect decimal columns dynamically
+                                df_data = None
+                                csv_file = os.path.join(verify_info["csv_dir"], f"{table_id.lower()}.csv")
+                                if os.path.exists(csv_file):
+                                    try:
+                                        df_data = pd.read_csv(csv_file)
+                                    except:
+                                        pass
+                                
+                                # Gather columns
+                                cols = [c for c in verify_info["columns"] if c['Table'] == table_id]
+                                for c in cols:
+                                    col_id = c['Column']
+                                    if col_id.upper() == 'ID':
+                                        continue
+                                        
+                                    grist_type = fb_type_to_grist(c['Type'])
+                                    
+                                    # Detect float/decimal columns in CSV data to override Int to Numeric (including comma decimals)
+                                    if df_data is not None and col_id in df_data.columns:
+                                        series = df_data[col_id].dropna().astype(str)
+                                        has_decimals = False
+                                        for val in series:
+                                            clean_val = val.replace(',', '.')
+                                            try:
+                                                float_val = float(clean_val)
+                                                if float_val % 1 != 0:
+                                                    has_decimals = True
+                                                    break
+                                            except ValueError:
+                                                pass
+                                        if has_decimals:
+                                            grist_type = "Numeric"
+                                                
+                                    # Create foreign keys as simple Int or Text temporarily
+                                    if (table_id, col_id) in table_fks:
+                                        schema_payload.append({
+                                            "id": col_id,
+                                            "fields": {
+                                                "label": col_id.replace('_', ' ').title(),
+                                                "type": "Int" if grist_type == "Int" else "Text",
+                                                "isFormula": False,
+                                                "formula": ""
+                                            }
+                                        })
+                                    else:
+                                        schema_payload.append({
+                                            "id": col_id,
+                                            "fields": {
+                                                "label": col_id.replace('_', ' ').title(),
+                                                "type": grist_type,
+                                                "isFormula": False,
+                                                "formula": ""
+                                            }
+                                        })
+                                        
+                                ok, created_id = create_table(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, table_id, schema_payload)
+                                if ok:
+                                    add_rel_log(f"   ✅ Tabela '{table_id}' criada.")
+                                elif created_id == "EXISTING":
+                                    add_rel_log(f"   ℹ️ Tabela '{table_id}' já existe no Grist.")
+                                else:
+                                    add_rel_log(f"   ❌ Erro ao criar tabela '{table_id}': {created_id}")
+                                    
+                            # Phase 2: Insert Data
+                            add_rel_log("\n--- FASE 2: INSERINDO REGISTROS DOS ARQUIVOS CSV ---")
+                            for table_id in ordered_tables:
+                                csv_file = os.path.join(verify_info["csv_dir"], f"{table_id.lower()}.csv")
+                                if not os.path.exists(csv_file):
+                                    add_rel_log(f"   ⚠️ Arquivo CSV '{table_id.lower()}.csv' não encontrado, pulando carga de dados.")
+                                    continue
+                                    
+                                if os.path.getsize(csv_file) <= 3:
+                                    add_rel_log(f"   ℹ️ Tabela '{table_id}' está vazia (0 registros), pulando carga de dados.")
+                                    continue
+                                    
+                                try:
+                                    df = pd.read_csv(csv_file)
+                                except Exception:
+                                    add_rel_log(f"   ℹ️ Tabela '{table_id}' está vazia (0 registros), pulando carga de dados.")
+                                    continue
+                                    
+                                add_rel_log(f"📂 Lendo {len(df)} registros para '{table_id}'...")
+                                
+                                records_to_insert = []
+                                for idx, row in df.iterrows():
+                                    fields_dict = {}
+                                    rec_id = None
+                                    for col in df.columns:
+                                        val = row[col]
+                                        if pd.isna(val):
+                                            val = None
+                                            
+                                        if col.upper() == 'ID':
+                                            rec_id = int(val) if val is not None else None
+                                        else:
+                                            if isinstance(val, str):
+                                                # Convert legacy date formats to ISO
+                                                if '/' in val:
+                                                    try:
+                                                        from datetime import datetime
+                                                        # format: 24/10/2025 00:00:00 (19 chars)
+                                                        if len(val) == 19 and val[2] == '/' and val[5] == '/' and val[10] == ' ':
+                                                            dt = datetime.strptime(val, "%d/%m/%Y %H:%M:%S")
+                                                            val = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                                        # format: 24/10/2025 (10 chars)
+                                                        elif len(val) == 10 and val[2] == '/' and val[5] == '/':
+                                                            dt = datetime.strptime(val, "%d/%m/%Y")
+                                                            val = dt.strftime("%Y-%m-%d")
+                                                    except ValueError:
+                                                        pass
+                                                
+                                                if ',' in val:
+                                                    try:
+                                                        clean_val = val.replace(',', '.')
+                                                        val = float(clean_val)
+                                                    except ValueError:
+                                                        pass
+                                            fields_dict[col.upper()] = val
+                                            
+                                    records_to_insert.append({
+                                        "id": rec_id,
+                                        "fields": fields_dict
+                                    })
+                                    
+                                scnt = 0
+                                for i in range(0, len(records_to_insert), 500):
+                                    batch = records_to_insert[i:i+500]
+                                    ok, m = add_records(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, table_id, batch)
+                                    if ok:
+                                        scnt += len(batch)
+                                    else:
+                                        add_rel_log(f"   ⚠️ Erro ao inserir lote na tabela '{table_id}': {m}")
+                                add_rel_log(f"   ✅ {scnt}/{len(records_to_insert)} registros inseridos com sucesso.")
+                                
+                            # Helper to resolve string column names to Grist internal column refs
+                            def resolve_visible_cols(base_url, api_key, doc_id):
+                                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                                r_tables = requests.get(f"{base_url}/docs/{doc_id}/tables/_grist_Tables/records", headers=headers)
+                                if r_tables.status_code != 200:
+                                    return {}, {}
+                                table_id_to_ref = {}
+                                for rec in r_tables.json().get('records', []):
+                                    fields = rec.get('fields', {})
+                                    t_id = fields.get('tableId')
+                                    if t_id:
+                                        table_id_to_ref[t_id] = rec['id']
+                                        
+                                r_cols = requests.get(f"{base_url}/docs/{doc_id}/tables/_grist_Tables_column/records", headers=headers)
+                                if r_cols.status_code != 200:
+                                    return {}, {}
+                                col_map = {}
+                                for rec in r_cols.json().get('records', []):
+                                    fields = rec.get('fields', {})
+                                    t_ref = fields.get('parentId')
+                                    c_id = fields.get('colId')
+                                    if t_ref and c_id:
+                                        col_map[(t_ref, c_id)] = rec['id']
+                                        
+                                return table_id_to_ref, col_map
+
+                            # Phase 3: Connect Relationships (Native References)
+                            add_rel_log("\n--- FASE 3: CONECTANDO RELACIONAMENTOS (REFERÊNCIAS NATIVAS) ---")
+                            reviewed_fks_list = st.session_state.get("reviewed_fks", [])
+                            
+                            # 3.1: Create z_disp helper columns first for all tables with configured display columns
+                            add_rel_log("⚙️ Criando colunas auxiliares de exibição (z_disp_*) para referências...")
+                            for table_id in ordered_tables:
+                                table_fks_list = [fk for fk in reviewed_fks_list if fk['Table'] == table_id]
+                                if not table_fks_list:
+                                    continue
+                                    
+                                new_helpers_payload = []
+                                for fk in table_fks_list:
+                                    col_id = fk['Column']
+                                    target_table = fk['ForeignTable']
+                                    display_col = fk.get('DisplayCol', 0)
+                                    
+                                    if target_table not in active_tables:
+                                        continue
+                                        
+                                    if display_col and display_col != "0":
+                                        helper_id = f"z_disp_{col_id}"
+                                        new_helpers_payload.append({
+                                            "id": helper_id,
+                                            "fields": {
+                                                "label": helper_id,
+                                                "type": "Any",
+                                                "isFormula": True,
+                                                "formula": f"${col_id}.{display_col}"
+                                            }
+                                        })
+                                
+                                if new_helpers_payload:
+                                    # Create columns (ignore if they already exist)
+                                    ok_h, m_h = add_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, table_id, new_helpers_payload)
+                                    if ok_h:
+                                        add_rel_log(f"   ✅ Helpers criados para '{table_id}'")
+                                    else:
+                                        # It might fail if columns already exist, which is fine
+                                        add_rel_log(f"   ℹ️ Helpers verificados/criados para '{table_id}'")
+                            
+                            # 3.2: Query current metadata column refs from Grist
+                            add_rel_log("🔍 Resolvendo IDs numéricos das colunas no Grist...")
+                            table_id_to_ref, col_map = resolve_visible_cols(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id)
+                            
+                            # 3.3: Convert columns to native References and set displayCol / visibleCol
+                            for table_id in ordered_tables:
+                                table_fks_list = [fk for fk in reviewed_fks_list if fk['Table'] == table_id]
+                                if not table_fks_list:
+                                    continue
+                                    
+                                add_rel_log(f"🔗 Convertendo colunas para referência nativa em '{table_id}'...")
+                                ref_cols_payload = []
+                                for fk in table_fks_list:
+                                    col_id = fk['Column']
+                                    target_table = fk['ForeignTable']
+                                    display_col = fk.get('DisplayCol', 0)
+                                    
+                                    if target_table not in active_tables:
+                                        add_rel_log(f"   ⚠️ Ignorando relação da coluna '{col_id}' para '{target_table}' pois a tabela de destino não foi importada.")
+                                        continue
+                                        
+                                    numeric_visible_col = 0
+                                    numeric_display_col = 0
+                                    
+                                    target_t_ref = table_id_to_ref.get(target_table)
+                                    current_t_ref = table_id_to_ref.get(table_id)
+                                    
+                                    if display_col and display_col != "0" and target_t_ref and current_t_ref:
+                                        numeric_visible_col = col_map.get((target_t_ref, display_col), 0)
+                                        numeric_display_col = col_map.get((current_t_ref, f"z_disp_{col_id}"), 0)
+                                        
+                                    ref_cols_payload.append({
+                                        "id": col_id,
+                                        "fields": {
+                                            "type": f"Ref:{target_table}",
+                                            "visibleCol": numeric_visible_col,
+                                            "displayCol": numeric_display_col
+                                        }
+                                    })
+                                    
+                                if ref_cols_payload:
+                                    ok, m = update_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, table_id, ref_cols_payload)
+                                    if ok:
+                                        for rcol in ref_cols_payload:
+                                            add_rel_log(f"   ✅ Coluna '{rcol['id']}' convertida com sucesso para '{rcol['fields']['type']}' (exibição: {rcol['fields']['visibleCol']})")
+                                    else:
+                                        add_rel_log(f"   ❌ Erro ao converter colunas em '{table_id}': {m}")
+                                    
+                            add_rel_log("\n🎉 IMPORTAÇÃO RELACIONAL TOTALMENTE CONCLUÍDA!")
+                            st.success("Importação relacional finalizada com sucesso!")
+                            st.balloons()
+                        except Exception as ex:
+                            st.error(f"Erro durante a importação relacional: {ex}")
+                
+                    st.divider()
+                    st.subheader("🧹 Limpeza de Tabelas Vazias/Órfãs")
+                    st.markdown("Se você já executou a importação antes e criou tabelas indesejadas (sem arquivos CSV), use este botão para apagá-las do documento do Grist.")
+                    
+                    if st.button("Limpar tabelas órfãs no Grist (sem CSV)", key="btn_clean_orphans"):
+                        try:
+                            # 1. Fetch tables in Grist doc
+                            existing_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id)
+                            existing_table_ids = [t['id'] for t in existing_tables if not t['id'].startswith('_grist')]
+                            
+                            # 2. Check which ones do NOT have matching CSVs in verify_info["csv_dir"]
+                            to_delete = []
+                            for t_id in existing_table_ids:
+                                csv_file = os.path.join(verify_info["csv_dir"], f"{t_id.lower()}.csv")
+                                if not os.path.exists(csv_file):
+                                    to_delete.append(t_id)
+                                    
+                            if not to_delete:
+                                st.info("Nenhuma tabela órfã encontrada no Grist.")
+                            else:
+                                st.write(f"🗑️ Deletando tabelas: {', '.join(to_delete)}")
+                                ok_del, m_del = delete_tables_batch(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, to_delete)
+                                if ok_del:
+                                    st.success(f"Tabelas removidas com sucesso: {', '.join(to_delete)}")
+                                    try:
+                                        st.rerun()
+                                    except AttributeError:
+                                        st.experimental_rerun()
+                                else:
+                                    st.error(f"Erro ao deletar tabelas: {m_del}")
+                        except Exception as ex:
+                            st.error(f"Erro ao limpar tabelas: {ex}")
+                
+                st.stop()
+            
+            # File Uploader
+            uploaded_file = st.file_uploader(
+                i18n[st.session_state.lang].get('import_upload_lbl', 'Selecione o arquivo CSV ou JSON'),
+                type=["csv", "json"],
+                key="import_file_uploader"
+            )
+            
+            if uploaded_file is not None:
+                # 2. Parse file and show preview
+                file_name = uploaded_file.name
+                is_csv = file_name.endswith('.csv')
+                
+                try:
+                    if is_csv:
+                        sep = st.text_input("Separador (CSV)", value=",")
+                        df = pd.read_csv(uploaded_file, sep=sep)
+                    else:
+                        df = pd.read_json(uploaded_file)
+                        
+                    st.write(i18n[st.session_state.lang].get('import_preview', '🔍 Pré-visualização dos dados (Primeiras 5 linhas):'))
+                    st.dataframe(df.head(5))
+                    
+                    # 3. Choose target Table
+                    st.subheader(i18n[st.session_state.lang].get('import_table_settings', '⚙️ Configurações da Tabela'))
+                    
+                    existing_tables = get_tables(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id)
+                    existing_table_ids = [t['id'] for t in existing_tables if not t['id'].startswith('_grist')]
+                    
+                    import_mode = st.radio(
+                        i18n[st.session_state.lang].get('import_mode_lbl', 'Destino dos dados:'),
+                        [
+                            i18n[st.session_state.lang].get('import_mode_new', 'Criar nova tabela'),
+                            i18n[st.session_state.lang].get('import_mode_existing', 'Adicionar a uma tabela existente')
+                        ]
+                    )
+                    
+                    if import_mode == i18n[st.session_state.lang].get('import_mode_new', 'Criar nova tabela'):
+                        default_table_id = "".join([c if c.isalnum() or c == '_' else '_' for c in file_name.rsplit('.', 1)[0]])
+                        while '__' in default_table_id:
+                            default_table_id = default_table_id.replace('__', '_')
+                        default_table_id = default_table_id.strip('_')
+                        
+                        target_table_id = st.text_input(
+                            i18n[st.session_state.lang].get('import_new_table_id', 'ID da nova tabela (Apenas letras, números e _)'),
+                            value=default_table_id
+                        )
+                        is_new_table = True
+                    else:
+                        target_table_id = st.selectbox(
+                            i18n[st.session_state.lang].get('import_select_table', 'Selecione a tabela existente'),
+                            options=sorted(existing_table_ids),
+                            index=None
+                        )
+                        is_new_table = False
+                        
+                    if target_table_id:
+                        # 4. Column settings and mapping
+                        st.subheader(i18n[st.session_state.lang].get('import_cols_mapping', '📋 Mapeamento de Colunas'))
+                        st.markdown(i18n[st.session_state.lang].get(
+                            'import_cols_desc',
+                            'Configure os tipos de coluna. Para colunas do tipo **Reference**, nós criaremos automaticamente uma coluna de link (Fórmula Lookup) no Grist!'
+                        ))
+                        
+                        col_configs = []
+                        for col in df.columns:
+                            dtype = df[col].dtype
+                            col_sanitized = "".join([c if c.isalnum() or c == '_' else '_' for c in col])
+                            while '__' in col_sanitized:
+                                col_sanitized = col_sanitized.replace('__', '_')
+                            col_sanitized = col_sanitized.strip('_')
+                            
+                            st.write(f"---")
+                            c1, c2, c3 = st.columns(3)
+                            
+                            with c1:
+                                st.markdown(f"**{i18n[st.session_state.lang].get('lbl_source_col', 'Coluna de Origem')}:** `{col}` *(dtype: {dtype})*")
+                                col_label = st.text_input(i18n[st.session_state.lang].get('lbl_dest_label', 'Label no Grist'), value=col, key=f"lbl_{col}")
+                                col_id = st.text_input(i18n[st.session_state.lang].get('lbl_dest_id', 'ID da Coluna'), value=col_sanitized, key=f"id_{col}")
+                                
+                            # Heuristic for Reference auto-detection
+                            detected_ref_table = None
+                            col_lower = col.lower()
+                            candidate_names = []
+                            if col_lower.startswith('id_'):
+                                candidate_names.append(col_lower[3:])
+                            elif col_lower.endswith('_id'):
+                                candidate_names.append(col_lower[:-3])
+                            elif col_lower.startswith('id'):
+                                candidate_names.append(col_lower[2:])
+                            elif col_lower.endswith('id'):
+                                candidate_names.append(col_lower[:-2])
+                                
+                            if candidate_names:
+                                cand = candidate_names[0]
+                                def normalize_name(name):
+                                    return name.replace('_', '').replace(' ', '').lower().rstrip('s')
+                                cand_norm = normalize_name(cand)
+                                for t_id in existing_table_ids:
+                                    t_id_norm = normalize_name(t_id)
+                                    if cand_norm == t_id_norm:
+                                        detected_ref_table = t_id
+                                        break
+
+                            # Suggest Bool if name matches boolean patterns or unique values are subset of {0, 1}
+                            is_probably_bool = False
+                            if col_lower.startswith('is_') or col_lower.startswith('has_') or col_lower.startswith('eh_') or col_lower.startswith('tem_'):
+                                is_probably_bool = True
+                            else:
+                                try:
+                                    unique_vals = set(df[col].dropna().unique())
+                                    if len(unique_vals) > 0 and unique_vals.issubset({0, 1, 0.0, 1.0, '0', '1', 'True', 'False', True, False}):
+                                        is_probably_bool = True
+                                except:
+                                    pass
+
+                            with c2:
+                                default_type_idx = 0 # Any
+                                if detected_ref_table is not None:
+                                    default_type_idx = 7 # Reference (Ref)
+                                elif is_probably_bool:
+                                    default_type_idx = 4 # Bool
+                                elif pd.api.types.is_integer_dtype(dtype):
+                                    default_type_idx = 2 # Int
+                                elif pd.api.types.is_numeric_dtype(dtype):
+                                    default_type_idx = 3 # Numeric
+                                elif pd.api.types.is_bool_dtype(dtype):
+                                    default_type_idx = 4 # Bool
+                                elif 'date' in col.lower() or 'data' in col.lower():
+                                    default_type_idx = 5 # Date
+                                elif pd.api.types.is_string_dtype(dtype):
+                                    default_type_idx = 1 # Text
+                                    
+                                col_type = st.selectbox(
+                                    i18n[st.session_state.lang].get('lbl_grist_type', 'Tipo no Grist'),
+                                    ["Any", "Text", "Int", "Numeric", "Bool", "Date", "Choice", "Reference (Ref)"],
+                                    index=default_type_idx,
+                                    key=f"type_{col}"
+                                )
+                                
+                            with c3:
+                                if col_type == "Reference (Ref)":
+                                    sorted_tables = sorted(existing_table_ids)
+                                    default_tbl_idx = None
+                                    if detected_ref_table in sorted_tables:
+                                        default_tbl_idx = sorted_tables.index(detected_ref_table)
+                                        
+                                    ref_table = st.selectbox(
+                                        i18n[st.session_state.lang].get('lbl_ref_table', 'Tabela Referenciada'),
+                                        options=sorted_tables,
+                                        index=default_tbl_idx,
+                                        key=f"reftbl_{col}"
+                                    )
+                                    if ref_table:
+                                        ref_cols = get_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, ref_table)
+                                        ref_col_ids = ['id'] + [rc['id'] for rc in ref_cols if rc['id'].lower() != 'id']
+                                        
+                                        default_match_idx = 0
+                                        match_col = st.selectbox(
+                                            i18n[st.session_state.lang].get('lbl_match_col', 'Coluna de Match'),
+                                            options=ref_col_ids,
+                                            index=default_match_idx,
+                                            key=f"matchcol_{col}"
+                                        )
+                                    else:
+                                        match_col = None
+                                else:
+                                    ref_table = None
+                                    match_col = None
+                                    
+                            col_configs.append({
+                                "source_col": col,
+                                "id": col_id,
+                                "label": col_label,
+                                "type": col_type,
+                                "ref_table": ref_table,
+                                "match_col": match_col
+                            })
+                            
+                        st.write("---")
+                        
+                        # Helpers for data cleaning
+                        def clean_bool(val):
+                            if pd.isna(val) or val is None:
+                                return None
+                            if isinstance(val, str):
+                                v = val.strip().lower()
+                                if v in ('1', 'true', 'yes', 't', 'y', 's', 'sim'):
+                                    return True
+                                if v in ('0', 'false', 'no', 'f', 'n', 'não'):
+                                    return False
+                            elif isinstance(val, (int, float)):
+                                return bool(val)
+                            return bool(val)
+
+                        def clean_date(val):
+                            if pd.isna(val) or val is None or str(val).strip() == "":
+                                return None
+                            try:
+                                if hasattr(val, 'strftime'):
+                                    return val.strftime('%Y-%m-%d')
+                                parsed = pd.to_datetime(val)
+                                return parsed.strftime('%Y-%m-%d')
+                            except:
+                                return str(val)
+                                
+                        def make_ref_column_name(col_id):
+                            ref_id = col_id
+                            if ref_id.lower().startswith('id_'):
+                                ref_id = ref_id[3:]
+                            elif ref_id.lower().endswith('_id'):
+                                ref_id = ref_id[:-3]
+                            elif ref_id.lower().startswith('id'):
+                                ref_id = ref_id[2:]
+                            elif ref_id.lower().endswith('id'):
+                                ref_id = ref_id[:-2]
+                            if ref_id == col_id:
+                                ref_id = f"ref_{col_id}"
+                            ref_id = ref_id.strip('_')
+                            return ref_id if ref_id else f"ref_{col_id}"
+                        
+                        if st.button(i18n[st.session_state.lang].get('btn_import_start', 'Iniciar Importação'), type="primary", key="btn_trigger_import"):
+                            st.session_state.import_logs = ["📥 Iniciando processo de importação..."]
+                            log_area = st.empty()
+                            
+                            def add_import_log(msg):
+                                st.session_state.import_logs.append(msg)
+                                log_area.code("\n".join(st.session_state.import_logs), language="markdown")
+                            
+                            table_created = True
+                            ref_formulas_to_add = []
+                            
+                            if is_new_table:
+                                add_import_log(f"🛠️ Criando nova tabela '{target_table_id}'...")
+                                schema_payload = []
+                                
+                                for cfg in col_configs:
+                                    if cfg["id"].lower() == 'id':
+                                        continue
+                                        
+                                    fields = {
+                                        "label": cfg["label"],
+                                        "isFormula": False,
+                                        "formula": ""
+                                    }
+                                    
+                                    if cfg["type"] == "Reference (Ref)":
+                                        fields["type"] = "Int" if pd.api.types.is_integer_dtype(df[cfg["source_col"]].dtype) else "Text"
+                                        schema_payload.append({
+                                            "id": cfg["id"],
+                                            "fields": fields
+                                        })
+                                        
+                                        ref_col_id = make_ref_column_name(cfg["id"])
+                                        ref_fields = {
+                                            "label": make_ref_column_name(cfg["label"]).replace('_', ' ').title(),
+                                            "type": f"Ref:{cfg['ref_table']}",
+                                            "isFormula": True,
+                                            "formula": f"{cfg['ref_table']}.lookupOne({cfg['match_col']}=${cfg['id']})"
+                                        }
+                                        ref_formulas_to_add.append({
+                                            "id": ref_col_id,
+                                            "fields": ref_fields
+                                        })
+                                    else:
+                                        fields["type"] = cfg["type"]
+                                        schema_payload.append({
+                                            "id": cfg["id"],
+                                            "fields": fields
+                                        })
+                                        
+                                ok, created_id = create_table(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, target_table_id, schema_payload)
+                                if ok:
+                                    add_import_log(f"   ✅ Tabela '{created_id}' criada com sucesso!")
+                                    target_table_id = created_id
+                                else:
+                                    add_import_log(f"   ❌ Erro ao criar tabela: {created_id}")
+                                    table_created = False
+                            else:
+                                add_import_log(f"   ℹ️ Usando tabela existente '{target_table_id}'.")
+                            
+                            if table_created:
+                                add_import_log(f"➤ Preparando dados para inserção...")
+                                records_to_insert = []
+                                
+                                for idx, row in df.iterrows():
+                                    fields_dict = {}
+                                    rec_id = None
+                                    for cfg in col_configs:
+                                        val = row[cfg["source_col"]]
+                                        
+                                        if pd.isna(val):
+                                            val = None
+                                        elif cfg["type"] == "Bool":
+                                            val = clean_bool(val)
+                                        elif cfg["type"] == "Int" and val is not None:
+                                            try: val = int(float(str(val)))
+                                            except: pass
+                                        elif cfg["type"] == "Numeric" and val is not None:
+                                            try: val = float(val)
+                                            except: pass
+                                        elif cfg["type"] == "Date" and val is not None:
+                                            val = clean_date(val)
+                                            
+                                        if cfg["id"].lower() == 'id':
+                                            try: rec_id = int(float(str(val)))
+                                            except: pass
+                                        else:
+                                            fields_dict[cfg["id"]] = val
+                                            
+                                    rec_payload = {"fields": fields_dict}
+                                    if rec_id is not None:
+                                        rec_payload["id"] = rec_id
+                                    records_to_insert.append(rec_payload)
+                                    
+                                add_import_log(f"➤ Inserindo {len(records_to_insert)} registros...")
+                                scnt = 0
+                                for i in range(0, len(records_to_insert), 500):
+                                    batch = records_to_insert[i:i+500]
+                                    ok, m = add_records(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, target_table_id, batch)
+                                    if ok:
+                                        scnt += len(batch)
+                                        add_import_log(f"   ✅ {scnt}/{len(records_to_insert)} registros inseridos.")
+                                    else:
+                                        add_import_log(f"   ⚠️ Lote com erro: {m}")
+                                        
+                                if ref_formulas_to_add:
+                                    add_import_log(f"➤ Criando {len(ref_formulas_to_add)} colunas de Referência Inteligentes...")
+                                    ok_add, m_add = add_columns(CURRENT_BASE_URL, AUTH_API_KEY, target_doc_id, target_table_id, ref_formulas_to_add)
+                                    if ok_add:
+                                        for rcol in ref_formulas_to_add:
+                                            add_import_log(f"   ✅ Coluna '{rcol['id']}' configurada com fórmula: `{rcol['fields']['formula']}`")
+                                    else:
+                                        add_import_log(f"   ❌ Erro ao adicionar colunas de referência: {m_add}")
+                                        
+                                add_import_log(f"\n🎉 IMPORTAÇÃO TOTALMENTE CONCLUÍDA!")
+                                st.success(i18n[st.session_state.lang].get('toast_import_ok', 'Importação Concluída!'))
+                                st.balloons()
+                                
+                except Exception as e:
+                    st.error(f"Erro ao ler arquivo: {e}")
+                    
         else:
             st.info("Mapeamento necessário.")
 
